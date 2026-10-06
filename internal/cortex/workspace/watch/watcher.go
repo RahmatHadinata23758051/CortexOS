@@ -2,10 +2,14 @@ package watch
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/RahmatHadinata23758051/CortexOS/internal/cortex/workspace"
@@ -179,7 +183,14 @@ func (w *Watcher) toChange(root string, event fsnotify.Event) (workspace.FileCha
 	case event.Op&fsnotify.Rename != 0:
 		operation = workspace.FileRenamed
 	}
-	return workspace.FileChange{ID: eventID(), CorrelationID: string(eventID()), RootID: root, RelativePath: filepath.ToSlash(relative), Operation: operation, ObservedAt: time.Now().UTC()}, true
+	contentHash := ""
+	if operation != workspace.FileRemoved && operation != workspace.FileRenamed {
+		if data, readErr := os.ReadFile(event.Name); readErr == nil {
+			hash := sha256.Sum256(data)
+			contentHash = "sha256:" + hex.EncodeToString(hash[:])
+		}
+	}
+	return workspace.FileChange{ID: eventID(), CorrelationID: string(eventID()), RootID: root, RelativePath: filepath.ToSlash(relative), Operation: operation, ObservedAt: time.Now().UTC(), ContentHash: contentHash}, true
 }
 
 func verifyEventContainment(root, candidate string) error {
@@ -224,5 +235,8 @@ func addDirectories(watcher *fsnotify.Watcher, root string) error {
 }
 
 func eventID() workspace.EventID {
-	return workspace.EventID(time.Now().UTC().Format("20060102T150405.000000000Z07:00"))
+	sequence := atomic.AddUint64(&eventSequence, 1)
+	return workspace.EventID(time.Now().UTC().Format("20060102T150405.000000000Z07:00") + "-" + strconv.FormatUint(sequence, 10))
 }
+
+var eventSequence uint64
