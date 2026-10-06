@@ -16,6 +16,7 @@ export type RuntimeBridge = {
 }
 
 export * from './workspace'
+import type { WorkspaceBridge } from './workspace'
 
 export type WailsWindow = Window & {
   go?: {
