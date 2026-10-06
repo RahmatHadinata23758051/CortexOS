@@ -8,7 +8,7 @@ import (
 func validTask() Task {
 	return Task{
 		ID: "task-1", ProjectID: "project-1", WorktreeID: "worktree-1", Title: "run validation",
-		AcceptanceCriteria: []string{"validation passes"}, MaxAttempts: 2,
+		AcceptanceCriteria: []string{"validation passes"}, MaxAttempts: 2, Status: TaskDraft,
 	}
 }
 
