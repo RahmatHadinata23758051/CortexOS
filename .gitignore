@@ -171,8 +171,6 @@ _harvest/**/.gitignore
 # documented, first-party location or explicitly force-added after license review.
 _harvest/extracted/*
 !_harvest/extracted/ATTRIBUTION-REVIEW.md
-!_harvest/extracted/**/
-!_harvest/extracted/**/.gitkeep
 !_harvest/harvest-manifest.json
 
 # ------------------------------------------------------------------------------

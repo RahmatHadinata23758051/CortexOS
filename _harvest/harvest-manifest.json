@@ -1,0 +1,162 @@
+﻿[
+    {
+        "name":  "pi",
+        "url":  "https://github.com/badlogic/pi-mono.git",
+        "ref":  "main",
+        "commit":  "428a12bc775145afa342530a9eaa652efb3e4422",
+        "licenseFiles":  [
+                             "LICENSE"
+                         ],
+        "repositoryStatus":  "cloned",
+        "licenseStatus":  "found-review-required",
+        "adoptionStatus":  "reference-only",
+        "reviewed":  false,
+        "reviewNotes":  null
+    },
+    {
+        "name":  "oh-my-pi",
+        "url":  "https://github.com/can1357/oh-my-pi.git",
+        "ref":  "main",
+        "commit":  "3f000c524cf82279f804ffd7526280cc9a5f25fe",
+        "licenseFiles":  [
+                             "LICENSE",
+                             "crates\\pi-ast\\LICENSE",
+                             "crates\\pi-builtins\\LICENSE",
+                             "crates\\pi-iso\\LICENSE",
+                             "crates\\pi-natives\\LICENSE",
+                             "crates\\pi-natives\\data\\LICENSE.ctok",
+                             "crates\\pi-shell\\LICENSE",
+                             "crates\\pi-shell\\NOTICE",
+                             "crates\\pi-voice\\LICENSE",
+                             "crates\\pi-walker\\LICENSE",
+                             "crates\\vendor\\brush-core\\LICENSE",
+                             "crates\\vendor\\brush-parser\\LICENSE",
+                             "crates\\vendor\\cfg_aliases\\LICENSE",
+                             "crates\\vendor\\napi\\LICENSE",
+                             "crates\\vendor\\tree-sitter-go\\LICENSE",
+                             "packages\\agent\\LICENSE",
+                             "packages\\ai\\LICENSE",
+                             "packages\\catalog\\LICENSE",
+                             "packages\\coding-agent\\LICENSE",
+                             "packages\\coding-agent\\src\\cli\\license.ts",
+                             "packages\\coding-agent\\src\\export\\html\\vendor\\NOTICE",
+                             "packages\\coding-agent\\src\\markit\\NOTICE",
+                             "packages\\coding-agent\\src\\tools\\browser\\relay\\extension-assets\\LICENSE.txt",
+                             "packages\\mnemopi\\LICENSE",
+                             "packages\\natives\\LICENSE",
+                             "packages\\omptype\\LICENSE",
+                             "packages\\omptype\\test\\ark\\LICENSE",
+                             "packages\\snapcompact\\LICENSE",
+                             "packages\\stats\\LICENSE",
+                             "packages\\tui\\LICENSE",
+                             "packages\\utils\\LICENSE",
+                             "packages\\wire\\LICENSE",
+                             "python\\robomp\\LICENSE",
+                             "sdk\\python\\omp-rpc\\LICENSE"
+                         ],
+        "repositoryStatus":  "cloned",
+        "licenseStatus":  "found-review-required",
+        "adoptionStatus":  "reference-only-nested-license-review",
+        "reviewed":  false,
+        "reviewNotes":  null
+    },
+    {
+        "name":  "agency-agents",
+        "url":  "https://github.com/msitarzewski/agency-agents.git",
+        "ref":  "main",
+        "commit":  "83294689da3832c0a9f223221148c411fd3eacc0",
+        "licenseFiles":  [
+                             "LICENSE"
+                         ],
+        "repositoryStatus":  "cloned",
+        "licenseStatus":  "found-review-required",
+        "adoptionStatus":  "reference-only",
+        "reviewed":  false,
+        "reviewNotes":  null
+    },
+    {
+        "name":  "agent-teams-ai",
+        "url":  "https://github.com/777genius/agent-teams-ai.git",
+        "ref":  "main",
+        "commit":  "90625bee6409b19b39a6a021c7f976f2b6a7c6ae",
+        "licenseFiles":  [
+                             "LICENSE"
+                         ],
+        "repositoryStatus":  "cloned",
+        "licenseStatus":  "found-review-required",
+        "adoptionStatus":  "blocked-pending-legal-review",
+        "reviewed":  false,
+        "reviewNotes":  null
+    },
+    {
+        "name":  "ai-town",
+        "url":  "https://github.com/a16z-infra/ai-town.git",
+        "ref":  "main",
+        "commit":  "8e05997f2409275669c8344b84a51692e83f3f33",
+        "licenseFiles":  [
+                             "LICENSE"
+                         ],
+        "repositoryStatus":  "cloned",
+        "licenseStatus":  "found-review-required",
+        "adoptionStatus":  "reference-only",
+        "reviewed":  false,
+        "reviewNotes":  null
+    },
+    {
+        "name":  "ai-office",
+        "url":  "https://github.com/ChristianFJung/AIOffice.git",
+        "ref":  "main",
+        "commit":  "ae6ed0e61ead26467253d9a56ae697c97a42e623",
+        "licenseFiles":  [
+                             "LICENSE",
+                             "apps\\web\\public\\tilesets\\pixel-office\\LICENSE.txt"
+                         ],
+        "repositoryStatus":  "cloned",
+        "licenseStatus":  "found-review-required",
+        "adoptionStatus":  "reference-only-asset-review",
+        "reviewed":  false,
+        "reviewNotes":  null
+    },
+    {
+        "name":  "pixel-agents",
+        "url":  "https://github.com/pixel-agents-hq/pixel-agents.git",
+        "ref":  "main",
+        "commit":  "3537e140c2094761beae748592aeb92ece8edfdd",
+        "licenseFiles":  [
+                             "LICENSE"
+                         ],
+        "repositoryStatus":  "cloned",
+        "licenseStatus":  "found-review-required",
+        "adoptionStatus":  "reference-only-asset-review",
+        "reviewed":  false,
+        "reviewNotes":  null
+    },
+    {
+        "name":  "chatdev",
+        "url":  "https://github.com/OpenBMB/ChatDev.git",
+        "ref":  "main",
+        "commit":  "4fb2db0ea90375ce1059f44fe03ffbd191a7a169",
+        "licenseFiles":  [
+                             "LICENSE"
+                         ],
+        "repositoryStatus":  "cloned",
+        "licenseStatus":  "found-review-required",
+        "adoptionStatus":  "reference-only",
+        "reviewed":  false,
+        "reviewNotes":  null
+    },
+    {
+        "name":  "opencode-harness",
+        "url":  "https://github.com/Awaiswilll/opencode-harness.git",
+        "ref":  "main",
+        "commit":  "20cbdc1a79de48d93ee54c683b4038fa97758174",
+        "licenseFiles":  [
+                             "skills\\design\\ui-styling\\LICENSE.txt"
+                         ],
+        "repositoryStatus":  "cloned",
+        "licenseStatus":  "found-review-required",
+        "adoptionStatus":  "blocked-ambiguous-license",
+        "reviewed":  false,
+        "reviewNotes":  null
+    }
+]
