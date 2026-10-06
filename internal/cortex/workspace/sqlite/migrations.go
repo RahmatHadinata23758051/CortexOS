@@ -49,12 +49,28 @@ func ApplyMigrations(ctx context.Context, db *sql.DB) error {
 		return fmt.Errorf("create workspace schema metadata: %w", err)
 	}
 
-	var applied int
-	if err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM workspace_schema`).Scan(&applied); err != nil {
+	rows, err := db.QueryContext(ctx, `SELECT version, name FROM workspace_schema ORDER BY version ASC`)
+	if err != nil {
 		return fmt.Errorf("read workspace schema metadata: %w", err)
 	}
-	if applied > len(migrations) {
-		return fmt.Errorf("%w: applied migration count %d exceeds known count %d", ErrUnknownSchema, applied, len(migrations))
+	defer rows.Close()
+
+	applied := 0
+	for rows.Next() {
+		var version int
+		var name string
+		if err := rows.Scan(&version, &name); err != nil {
+			return fmt.Errorf("decode workspace schema metadata: %w", err)
+		}
+		expectedVersion := applied + 1
+		expectedName := fmt.Sprintf("workspace-%d", expectedVersion)
+		if version != expectedVersion || name != expectedName || version > len(migrations) {
+			return fmt.Errorf("%w: found migration version %d (%q), expected %d (%q)", ErrUnknownSchema, version, name, expectedVersion, expectedName)
+		}
+		applied++
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("iterate workspace schema metadata: %w", err)
 	}
 	for index := applied; index < len(migrations); index++ {
 		if err := applyOne(ctx, db, index+1, migrations[index]); err != nil {
