@@ -27,11 +27,11 @@ function Invoke-NpmChecked([string]$ScriptName) {
     if ($LASTEXITCODE -ne 0) { throw "Command failed: npm run $ScriptName" }
 }
 
-Write-Host "[1/8] Git diff check" -ForegroundColor Cyan
+Write-Host "[1/10] Git diff check" -ForegroundColor Cyan
 git -c core.safecrlf=false diff --check
 if ($LASTEXITCODE -ne 0) { throw "git diff --check failed" }
 
-Write-Host "[2/8] Ignore policy check" -ForegroundColor Cyan
+Write-Host "[2/10] Ignore policy check" -ForegroundColor Cyan
 $ignored = @(
     ".mcp.json",
     ".env",
@@ -48,7 +48,7 @@ foreach ($path in $ignored) {
     if ($LASTEXITCODE -ne 0) { throw "Expected ignored path is not ignored: $path" }
 }
 
-Write-Host "[3/8] Harvest manifest refresh" -ForegroundColor Cyan
+Write-Host "[3/10] Harvest manifest refresh" -ForegroundColor Cyan
 if (-not $SkipHarvest) {
     & (Join-Path $PSScriptRoot "harvest.ps1") -SkipClone
     if ($LASTEXITCODE -ne 0) { throw "Harvest provenance refresh failed" }
@@ -57,7 +57,7 @@ if (-not (Test-Path -LiteralPath (Join-Path $root "_harvest/harvest-manifest.jso
     throw "Harvest manifest was not created"
 }
 
-Write-Host "[4/8] Secret-pattern review" -ForegroundColor Cyan
+Write-Host "[4/10] Secret-pattern review" -ForegroundColor Cyan
 $tracked = @(git ls-files)
 $scanFiles = @($tracked | Where-Object {
     $_ -notmatch '(^|/)(\.git|_harvest/raw|node_modules|build/bin|web/wailsjs)(/|$)' -and
@@ -69,14 +69,26 @@ foreach ($pattern in $patterns) {
     if ($matches) { throw "Possible secret pattern found: $pattern" }
 }
 
-Write-Host "[5/8] Go gates" -ForegroundColor Cyan
+Write-Host "[5/10] Workspace boundary and dependency review" -ForegroundColor Cyan
+$workspaceProduction = @(Get-ChildItem -LiteralPath (Join-Path $root "internal/cortex/workspace") -Recurse -Filter "*.go" | Where-Object { $_.Name -notlike "*_test.go" })
+$forbiddenWorkspaceImports = @('wailsapp', 'react', 'typescript', 'linear', 'orchestra', 'harness', 'staff', 'phaser')
+foreach ($pattern in $forbiddenWorkspaceImports) {
+    $matches = Select-String -Path $workspaceProduction.FullName -Pattern ('^\s*"[^" ]*' + [regex]::Escape($pattern)) -CaseSensitive:$false -ErrorAction SilentlyContinue
+    if ($matches) { $matches | Write-Error; throw "Forbidden Workspace runtime import found: $pattern" }
+}
+$goMod = Get-Content -LiteralPath (Join-Path $root "go.mod") -Raw
+if ($goMod -notmatch 'modernc\.org/sqlite\s+v1\.59\.0') { throw "SQLite dependency pin is missing or unexpected" }
+if ($goMod -notmatch 'github\.com/fsnotify/fsnotify\s+v1\.10\.1') { throw "fsnotify dependency pin is missing or unexpected" }
+Invoke-Checked "go list -m all" { go list -m all }
+
+Write-Host "[6/10] Go gates" -ForegroundColor Cyan
 Invoke-Checked "go mod tidy" { go mod tidy }
 Invoke-Checked "go test ./..." { go test ./... }
 $formatted = @(gofmt -l .)
 if ($formatted.Count -gt 0) { $formatted | Write-Error; throw "Go formatting check failed" }
 Invoke-Checked "go vet ./..." { go vet ./... }
 
-Write-Host "[6/8] Frontend gates" -ForegroundColor Cyan
+Write-Host "[7/10] Frontend gates" -ForegroundColor Cyan
 Push-Location (Join-Path $root "web")
 try {
     npm.cmd ci --ignore-scripts
@@ -93,7 +105,7 @@ try {
     Pop-Location
 }
 
-Write-Host "[7/8] Wails shell build" -ForegroundColor Cyan
+Write-Host "[8/10] Wails shell build" -ForegroundColor Cyan
 Invoke-Checked "wails build -nopackage" { wails build -nopackage }
 if (Test-Path -LiteralPath (Join-Path $root "web/package.json.md5")) {
     Remove-Item -LiteralPath (Join-Path $root "web/package.json.md5") -Force
@@ -102,11 +114,15 @@ if (Test-Path -LiteralPath (Join-Path $root "cortexos.exe")) {
     Remove-Item -LiteralPath (Join-Path $root "cortexos.exe") -Force
 }
 
-Write-Host "[8/8] Tracked artifact review" -ForegroundColor Cyan
+Write-Host "[9/10] Tracked artifact review" -ForegroundColor Cyan
 $forbidden = @(git ls-files | Where-Object { $_ -match '(^|/)(node_modules|dist|build/bin|_harvest/raw|wailsjs)(/|$)|(^|/)(\.env|.*\.key|.*\.pem)$' })
 if ($forbidden.Count -gt 0) {
     $forbidden | Write-Error
     throw "Forbidden generated, raw, or secret path is tracked"
 }
 
+Write-Host "[10/10] Offline and security scope review" -ForegroundColor Cyan
+$runtimeSource = @(Get-ChildItem -LiteralPath (Join-Path $root "internal") -Recurse -Filter "*.go" | Where-Object { $_.FullName -notmatch '\\platform\\' })
+$runtimeForbidden = Select-String -Path $runtimeSource.FullName -Pattern 'linear|provider[_-]?key|OPENAI|ANTHROPIC|GEMINI|http://|https://' -CaseSensitive:$false -ErrorAction SilentlyContinue
+if ($runtimeForbidden) { $runtimeForbidden | Write-Error; throw "Network, provider, or Linear runtime dependency found" }
 Write-Host "Repository validation passed." -ForegroundColor Green

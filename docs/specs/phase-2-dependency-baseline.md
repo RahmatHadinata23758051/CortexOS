@@ -10,7 +10,7 @@ Phase 2 keeps the Workspace core behind narrow internal ports. Only persistence 
 
 | Capability | Selection | Version | Owner | License | Rationale |
 | --- | --- | --- | --- | --- | --- |
-| SQLite | `modernc.org/sqlite` | `v1.60.1` | Workspace | BSD-3-Clause; bundled SQLite public domain and third-party notices | Pure-Go `database/sql` driver; avoids CGO for the Windows Wails baseline. |
+| SQLite | `modernc.org/sqlite` | `v1.59.0` | Workspace | BSD-3-Clause; bundled SQLite public domain and third-party notices | Pure-Go `database/sql` driver; avoids CGO for the Windows Wails baseline. |
 | File watching | `github.com/fsnotify/fsnotify` | `v1.10.1` | Workspace | BSD-3-Clause | Mature cross-platform OS notification API with Windows `ReadDirectoryChangesW` support. |
 | Git | Go standard library plus a constrained process adapter | N/A | Workspace | Go standard library; Git remains an external user-installed tool | Keeps Git behavior behind `WorktreeManager`; avoids exposing arbitrary command execution or coupling the domain to a Git library. |
 | Retrieval | Go standard library deterministic index | N/A | Workspace | Go standard library | First retrieval slice is local, model-free, deterministic, bounded, and rebuildable. |
@@ -20,14 +20,14 @@ The exact module versions are recorded in `go.mod` and `go.sum`. No provider SDK
 ## Compatibility evidence
 
 - Repository toolchain: Go 1.25.0 minimum; local validation uses Go 1.26.3 on Windows/amd64.
-- `modernc.org/sqlite@v1.60.1` requires Go 1.26.0, is pure Go/no-CGO, and documents support for Windows/amd64. Its upstream package metadata identifies BSD-3-Clause licensing and SQLite public-domain licensing.
+- `modernc.org/sqlite@v1.59.0` is pure Go/no-CGO and supports the Windows/amd64 validation path. Its upstream package metadata identifies BSD-3-Clause licensing and SQLite public-domain licensing.
 - `github.com/fsnotify/fsnotify@v1.10.1` requires Go 1.23 or newer and documents Windows support through `ReadDirectoryChangesW`.
 - CGO remains disabled for the supported local validation path. A future CGO-backed driver is a separate decision and cannot be introduced as an incidental replacement.
 - Wails remains isolated in `internal/platform`; neither selected Workspace dependency is imported by frontend or Wails binding code directly.
 
 ## Dependency and transitive risk
 
-### `modernc.org/sqlite v1.60.1`
+### `modernc.org/sqlite v1.59.0`
 
 - Direct purpose: local SQLite persistence through `database/sql`.
 - License: BSD-3-Clause for the Go module; upstream documents SQLite as public domain and includes third-party license/SBOM material.
@@ -59,8 +59,8 @@ The exact module versions are recorded in `go.mod` and `go.sum`. No provider SDK
 
 ## License and provenance sources
 
-- SQLite Go driver: <https://pkg.go.dev/modernc.org/sqlite@v1.60.1>
-- SQLite source/license: <https://gitlab.com/cznic/sqlite/-/tree/v1.60.1>
+- SQLite Go driver: <https://pkg.go.dev/modernc.org/sqlite@v1.59.0>
+- SQLite source/license: <https://gitlab.com/cznic/sqlite/-/tree/v1.59.0>
 - fsnotify package: <https://pkg.go.dev/github.com/fsnotify/fsnotify@v1.10.1>
 - fsnotify repository/license: <https://github.com/fsnotify/fsnotify/tree/v1.10.1>
 - Go standard library: <https://go.dev/LICENSE>
@@ -97,4 +97,4 @@ The Phase 2 repository gate additionally runs frontend checks, Wails build, secr
 - [x] Windows/Go/CGO compatibility assumptions are explicit.
 - [x] Git cannot become an arbitrary command bridge.
 - [x] Retrieval has no network or provider-key requirement.
-- [ ] Go modules are added in separate commits and pass full validation.
+- [x] Direct Go modules are pinned in `go.mod`/`go.sum` and pass the repository validation workflow; the environment remains explicit about Windows race-test and offline-package-install caveats.
