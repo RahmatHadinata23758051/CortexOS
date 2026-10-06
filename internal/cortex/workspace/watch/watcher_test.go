@@ -71,6 +71,14 @@ func TestWatcherCreateDirectoryAndDeleteEvents(t *testing.T) {
 	if err := os.Mkdir(directory, 0o700); err != nil {
 		t.Fatal(err)
 	}
+	select {
+	case change := <-changes:
+		if change.RelativePath != "nested" {
+			t.Fatalf("directory change = %#v", change)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for nested directory registration")
+	}
 	file := filepath.Join(directory, "note.md")
 	if err := os.WriteFile(file, []byte("body\n"), 0o600); err != nil {
 		t.Fatal(err)
