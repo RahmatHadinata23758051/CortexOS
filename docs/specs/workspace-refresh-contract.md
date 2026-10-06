@@ -1,6 +1,6 @@
 # CortexOS Workspace Refresh Contract
 
-**Issue:** BAN-51  
+**Issue:** BAN-51
 **Format:** `cortexos.workspace-refresh.v1`
 
 ## Boundary

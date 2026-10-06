@@ -77,7 +77,17 @@ func (c *Coordinator) Start(ctx context.Context, projectID workspace.ProjectID, 
 	if projectID == "" {
 		return workspace.NewError(workspace.ErrInvalidRequest, "project id is required")
 	}
-	changes, err := c.watcher.Start(ctx, root)
+	canonicalRoot, err := workspace.CanonicalRoot(root)
+	if err != nil {
+		return err
+	}
+	c.mu.Lock()
+	if c.running {
+		c.mu.Unlock()
+		return workspace.NewError(workspace.ErrConflict, "refresh coordinator is already running")
+	}
+	c.mu.Unlock()
+	changes, err := c.watcher.Start(ctx, canonicalRoot)
 	if err != nil {
 		return err
 	}
@@ -100,7 +110,7 @@ func (c *Coordinator) Start(ctx context.Context, projectID workspace.ProjectID, 
 	}
 	stopped := c.stopped
 	c.mu.Unlock()
-	go c.loop(watchCtx, projectID, changes, stopped)
+	go c.loop(watchCtx, projectID, canonicalRoot, changes, stopped)
 	return nil
 }
 
@@ -121,7 +131,7 @@ func (c *Coordinator) Stop() error {
 	return nil
 }
 
-func (c *Coordinator) loop(ctx context.Context, projectID workspace.ProjectID, changes <-chan workspace.FileChange, stopped chan struct{}) {
+func (c *Coordinator) loop(ctx context.Context, projectID workspace.ProjectID, root string, changes <-chan workspace.FileChange, stopped chan struct{}) {
 	defer func() {
 		c.mu.Lock()
 		c.running = false
@@ -161,6 +171,9 @@ func (c *Coordinator) loop(ctx context.Context, projectID workspace.ProjectID, c
 				flush()
 				return
 			}
+			if change.RootID != "" && filepath.Clean(change.RootID) != filepath.Clean(root) {
+				continue
+			}
 			if change.Operation == workspace.FileError || change.Operation == workspace.FileRescanRequired {
 				pending[change.RelativePath] = Request{
 					ProjectID: projectID, RootID: change.RootID, RelativePath: change.RelativePath,
@@ -172,8 +185,12 @@ func (c *Coordinator) loop(ctx context.Context, projectID workspace.ProjectID, c
 			if change.RelativePath == "" || !isMarkdownPath(change.RelativePath) {
 				continue
 			}
-			pending[change.RelativePath] = Request{
-				ProjectID: projectID, RootID: change.RootID, RelativePath: filepath.Clean(change.RelativePath),
+			canonicalRelative, relativeErr := workspace.CanonicalRelative(change.RelativePath)
+			if relativeErr != nil || canonicalRelative != filepath.Clean(filepath.FromSlash(change.RelativePath)) {
+				continue
+			}
+			pending[canonicalRelative] = Request{
+				ProjectID: projectID, RootID: change.RootID, RelativePath: canonicalRelative,
 				Operation: change.Operation, ContentHash: change.ContentHash, ObservedAt: change.ObservedAt,
 			}
 			timer.Reset(c.debounce)

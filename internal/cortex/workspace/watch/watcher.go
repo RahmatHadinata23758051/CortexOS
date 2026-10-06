@@ -106,12 +106,14 @@ func (w *Watcher) loop() {
 	w.mu.Unlock()
 	defer func() {
 		w.mu.Lock()
-		w.running = false
-		w.watcher = nil
-		w.ctx = nil
-		w.stopped = nil
+		if w.stopped == stopped {
+			w.running = false
+			w.watcher = nil
+			w.ctx = nil
+			w.stopped = nil
+			close(stopped)
+		}
 		w.mu.Unlock()
-		close(stopped)
 		_ = fsWatcher.Close()
 		close(changes)
 	}()
