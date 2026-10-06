@@ -1,8 +1,8 @@
 # Phase 2 Workspace Layer Review
 
-**Review issue:** BAN-55  
-**Milestone:** Phase 2 — Workspace Layer  
-**Review date:** 2026-10-06  
+**Review issue:** BAN-55
+**Milestone:** Phase 2 — Workspace Layer
+**Review date:** 2026-10-06
 **Decision:** **GO for Phase 3 entry, with documented non-critical platform caveats**
 
 ## Scope and ownership
