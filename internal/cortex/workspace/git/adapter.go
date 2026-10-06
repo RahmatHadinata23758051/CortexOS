@@ -227,6 +227,13 @@ func (a *Adapter) CreateWorktree(ctx context.Context, worktree workspace.Worktre
 	base := project.DefaultBranch
 	if worktree.Revision != "" {
 		base = worktree.Revision
+		if err := validateRevision(base); err != nil {
+			return workspace.Worktree{}, err
+		}
+	} else if base != "" {
+		if err := validateBranch(base); err != nil {
+			return workspace.Worktree{}, workspace.WrapError(workspace.ErrInvalidRequest, "project default branch is invalid", err)
+		}
 	}
 	if base == "" {
 		base = "HEAD"
