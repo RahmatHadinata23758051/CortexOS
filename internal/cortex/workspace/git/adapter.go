@@ -209,6 +209,9 @@ func (a *Adapter) CreateWorktree(ctx context.Context, worktree workspace.Worktre
 	if err != nil {
 		return workspace.Worktree{}, err
 	}
+	if err := os.MkdirAll(filepath.Join(a.worktreeRoot, string(worktree.ProjectID)), 0o755); err != nil {
+		return workspace.Worktree{}, workspace.WrapError(workspace.ErrStorageUnavailable, "worktree root cannot be prepared", err)
+	}
 	target, err := a.approvedTarget(worktree.ProjectID, worktree.Path)
 	if err != nil {
 		return workspace.Worktree{}, err
@@ -387,7 +390,43 @@ func (a *Adapter) approvedTarget(projectID workspace.ProjectID, target string) (
 	if err != nil || relative == "." || filepath.IsAbs(relative) || strings.HasPrefix(relative, ".."+string(filepath.Separator)) || relative == ".." {
 		return "", workspace.NewError(workspace.ErrPathDenied, "worktree path is outside the approved worktree root")
 	}
+	if err := verifyExistingContainment(projectRoot, canonicalTarget); err != nil {
+		return "", err
+	}
 	return canonicalTarget, nil
+}
+
+func verifyExistingContainment(root, target string) error {
+	rootResolved, err := filepath.EvalSymlinks(root)
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		return workspace.WrapError(workspace.ErrPathDenied, "worktree root link cannot be resolved", err)
+	}
+	if err != nil {
+		rootResolved = filepath.Clean(root)
+	}
+	ancestor := target
+	for {
+		resolved, resolveErr := filepath.EvalSymlinks(ancestor)
+		if resolveErr == nil {
+			if !samePath(rootResolved, resolved) && !pathWithin(rootResolved, resolved) {
+				return workspace.NewError(workspace.ErrPathDenied, "worktree path resolves outside the approved root")
+			}
+			return nil
+		}
+		if !errors.Is(resolveErr, os.ErrNotExist) {
+			return workspace.WrapError(workspace.ErrPathDenied, "worktree path link cannot be resolved", resolveErr)
+		}
+		parent := filepath.Dir(ancestor)
+		if parent == ancestor {
+			return nil
+		}
+		ancestor = parent
+	}
+}
+
+func pathWithin(root, candidate string) bool {
+	relative, err := filepath.Rel(root, candidate)
+	return err == nil && relative != ".." && !strings.HasPrefix(relative, ".."+string(filepath.Separator)) && !filepath.IsAbs(relative)
 }
 
 func (a *Adapter) remember(worktree workspace.Worktree) {
