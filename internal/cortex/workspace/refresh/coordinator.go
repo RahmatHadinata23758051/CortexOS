@@ -2,7 +2,9 @@ package refresh
 
 import (
 	"context"
+	"path/filepath"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -159,11 +161,19 @@ func (c *Coordinator) loop(ctx context.Context, projectID workspace.ProjectID, c
 				flush()
 				return
 			}
-			if change.RelativePath == "" && change.Operation != workspace.FileRescanRequired && change.Operation != workspace.FileError {
+			if change.Operation == workspace.FileError || change.Operation == workspace.FileRescanRequired {
+				pending[change.RelativePath] = Request{
+					ProjectID: projectID, RootID: change.RootID, RelativePath: change.RelativePath,
+					Operation: change.Operation, ContentHash: change.ContentHash, ObservedAt: change.ObservedAt,
+				}
+				timer.Reset(c.debounce)
+				continue
+			}
+			if change.RelativePath == "" || !isMarkdownPath(change.RelativePath) {
 				continue
 			}
 			pending[change.RelativePath] = Request{
-				ProjectID: projectID, RootID: change.RootID, RelativePath: change.RelativePath,
+				ProjectID: projectID, RootID: change.RootID, RelativePath: filepath.Clean(change.RelativePath),
 				Operation: change.Operation, ContentHash: change.ContentHash, ObservedAt: change.ObservedAt,
 			}
 			timer.Reset(c.debounce)
@@ -197,6 +207,10 @@ func (c *Coordinator) publishFailure(failure Failure) {
 	case failures <- failure:
 	default:
 	}
+}
+
+func isMarkdownPath(path string) bool {
+	return strings.EqualFold(filepath.Ext(filepath.Clean(path)), ".md")
 }
 
 func NewRebuildHandler(index workspace.RetrievalIndex) Handler {

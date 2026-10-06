@@ -114,6 +114,35 @@ func TestCoordinatorCoalescesSamePathAndStopsIdempotently(t *testing.T) {
 	}
 }
 
+func TestCoordinatorFiltersNonMarkdownPaths(t *testing.T) {
+	t.Parallel()
+
+	memory := workspace.NewMemoryWorkspace()
+	if err := memory.Open(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	coordinator, err := New(memory, func(context.Context, Request) error { return nil })
+	if err != nil {
+		t.Fatal(err)
+	}
+	requests := coordinator.Requests()
+	root := t.TempDir()
+	if err := coordinator.Start(context.Background(), "project", root); err != nil {
+		t.Fatal(err)
+	}
+	defer coordinator.Stop()
+	for _, path := range []string{"ignored.txt", "nested/ignored.json"} {
+		if err := memory.PublishChange(context.Background(), workspace.FileChange{RootID: root, RelativePath: path, Operation: workspace.FileModified}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	select {
+	case request := <-requests:
+		t.Fatalf("unexpected non-Markdown request = %#v", request)
+	case <-time.After(150 * time.Millisecond):
+	}
+}
+
 func TestCoordinatorRequiresControlledDependencies(t *testing.T) {
 	t.Parallel()
 
