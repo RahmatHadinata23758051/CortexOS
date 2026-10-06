@@ -106,6 +106,56 @@ func (s *Service) RemoveWorktree(ctx context.Context, id WorktreeID) error {
 	return s.dependencies.Worktrees.RemoveWorktree(ctx, id)
 }
 
+func (s *Service) CreateNote(ctx context.Context, note VaultNote) (VaultNote, error) {
+	if err := requireServiceContext(ctx); err != nil {
+		return VaultNote{}, err
+	}
+	if s.dependencies.Vault == nil {
+		return VaultNote{}, NewError(ErrInvalidRequest, "workspace Vault store is unavailable")
+	}
+	return s.dependencies.Vault.CreateNote(ctx, note)
+}
+
+func (s *Service) GetNote(ctx context.Context, id NoteID) (VaultNote, error) {
+	if err := requireServiceContext(ctx); err != nil {
+		return VaultNote{}, err
+	}
+	if s.dependencies.Vault == nil {
+		return VaultNote{}, NewError(ErrInvalidRequest, "workspace Vault store is unavailable")
+	}
+	return s.dependencies.Vault.GetNote(ctx, id)
+}
+
+func (s *Service) ListNotes(ctx context.Context, projectID ProjectID) ([]VaultNote, error) {
+	if err := requireServiceContext(ctx); err != nil {
+		return nil, err
+	}
+	if s.dependencies.Vault == nil {
+		return nil, NewError(ErrInvalidRequest, "workspace Vault store is unavailable")
+	}
+	return s.dependencies.Vault.ListNotes(ctx, projectID)
+}
+
+func (s *Service) UpdateNote(ctx context.Context, note VaultNote, expectedHash string) (VaultNote, error) {
+	if err := requireServiceContext(ctx); err != nil {
+		return VaultNote{}, err
+	}
+	if s.dependencies.Vault == nil {
+		return VaultNote{}, NewError(ErrInvalidRequest, "workspace Vault store is unavailable")
+	}
+	return s.dependencies.Vault.UpdateNote(ctx, note, expectedHash)
+}
+
+func (s *Service) DeleteNote(ctx context.Context, id NoteID) error {
+	if err := requireServiceContext(ctx); err != nil {
+		return err
+	}
+	if s.dependencies.Vault == nil {
+		return NewError(ErrInvalidRequest, "workspace Vault store is unavailable")
+	}
+	return s.dependencies.Vault.DeleteNote(ctx, id)
+}
+
 func (s *Service) Snapshot(ctx context.Context) (WorkspaceSnapshot, error) {
 	if err := requireServiceContext(ctx); err != nil {
 		return WorkspaceSnapshot{}, err

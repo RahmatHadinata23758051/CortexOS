@@ -30,8 +30,8 @@ func TestOpenCreatesAndReopensDatabase(t *testing.T) {
 	if err := second.DB().QueryRow(`SELECT COUNT(*) FROM workspace_schema`).Scan(&count); err != nil {
 		t.Fatal(err)
 	}
-	if count != 2 {
-		t.Fatalf("migration count = %d, want 2", count)
+	if count != len(migrations) {
+		t.Fatalf("migration count = %d, want %d", count, len(migrations))
 	}
 }
 

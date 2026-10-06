@@ -24,6 +24,23 @@ var migrations = []string{
 		schema_version TEXT NOT NULL
 	);`,
 	`CREATE INDEX projects_status_idx ON projects(status);`,
+	`CREATE TABLE vault_notes (
+		id TEXT PRIMARY KEY NOT NULL,
+		project_id TEXT NOT NULL,
+		worktree_id TEXT NOT NULL DEFAULT '',
+		relative_path TEXT NOT NULL,
+		title TEXT NOT NULL,
+		format_version TEXT NOT NULL,
+		source TEXT NOT NULL,
+		author TEXT NOT NULL,
+		created_at TEXT NOT NULL,
+		updated_at TEXT NOT NULL,
+		content_hash TEXT NOT NULL,
+		status TEXT NOT NULL,
+		UNIQUE(project_id, relative_path),
+		FOREIGN KEY(project_id) REFERENCES projects(id)
+	);`,
+	`CREATE INDEX vault_notes_project_idx ON vault_notes(project_id, relative_path);`,
 }
 
 func SchemaVersion() string { return schemaVersion }

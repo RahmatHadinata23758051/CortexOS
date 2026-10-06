@@ -4,6 +4,8 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -90,6 +92,9 @@ func validateNote(note workspace.VaultNote) error {
 	if note.ID == "" || note.ProjectID == "" || note.RelativePath == "" || note.Title == "" || note.Source == "" || note.Author == "" {
 		return workspace.NewError(workspace.ErrInvalidRequest, "Vault note identity, scope, title, and attribution are required")
 	}
+	if _, err := validateRelativeNotePath(note.RelativePath); err != nil {
+		return err
+	}
 	if note.FormatVersion != FormatVersion {
 		return workspace.NewError(workspace.ErrUnsupportedVersion, "Vault note format version is unsupported")
 	}
@@ -102,11 +107,36 @@ func validateNote(note workspace.VaultNote) error {
 	return nil
 }
 
+func validateRelativeNotePath(path string) (string, error) {
+	if !strings.HasSuffix(strings.ToLower(path), ".md") {
+		return "", workspace.NewError(workspace.ErrInvalidRequest, "Vault note path must end with .md")
+	}
+	canonical, err := workspace.CanonicalRelative(path)
+	if err != nil {
+		return "", err
+	}
+	if canonical != filepath.Clean(filepath.FromSlash(path)) {
+		return "", workspace.NewError(workspace.ErrInvalidRequest, "Vault note path is not canonical")
+	}
+	if strings.ContainsAny(canonical, "\r\n\x00") {
+		return "", workspace.NewError(workspace.ErrInvalidRequest, "Vault note path contains invalid characters")
+	}
+	return canonical, nil
+}
+
 func writeField(builder *strings.Builder, key, value string) {
 	builder.WriteString(key)
 	builder.WriteString(": ")
-	builder.WriteString(value)
+	if needsQuotedScalar(value) {
+		builder.WriteString(strconv.Quote(value))
+	} else {
+		builder.WriteString(value)
+	}
 	builder.WriteByte('\n')
+}
+
+func needsQuotedScalar(value string) bool {
+	return value == "" || strings.TrimSpace(value) != value || strings.ContainsAny(value, ":#{}[]&,*!|>'\"%@`\\\t\r\n")
 }
 
 func parseMetadata(metadata string) (map[string]string, error) {
@@ -126,6 +156,15 @@ func parseMetadata(metadata string) (map[string]string, error) {
 		}
 		if strings.ContainsAny(key, "\r\n\t") || strings.ContainsAny(value, "\r\n") {
 			return nil, workspace.NewError(workspace.ErrInvalidRequest, "Vault note metadata contains invalid characters")
+		}
+		if len(value) >= 2 && value[0] == '"' && value[len(value)-1] == '"' {
+			decoded, decodeErr := strconv.Unquote(value)
+			if decodeErr != nil {
+				return nil, workspace.NewError(workspace.ErrInvalidRequest, "Vault note metadata has malformed quoted scalar")
+			}
+			value = decoded
+		} else if strings.HasPrefix(value, "\"") || strings.HasSuffix(value, "\"") {
+			return nil, workspace.NewError(workspace.ErrInvalidRequest, "Vault note metadata has malformed quoted scalar")
 		}
 		values[key] = value
 	}
