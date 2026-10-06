@@ -74,6 +74,13 @@ type repositoryFacts struct {
 	Branch string
 }
 
+type worktreeEntry struct {
+	Path     string
+	Revision string
+	Branch   string
+	Locked   bool
+}
+
 func (a *Adapter) InspectRepository(ctx context.Context, root string) (repositoryFacts, error) {
 	if err := requireContext(ctx); err != nil {
 		return repositoryFacts{}, err
@@ -274,11 +281,10 @@ func (a *Adapter) ListWorktrees(ctx context.Context, projectID workspace.Project
 	if err != nil {
 		return nil, err
 	}
-	stdout, stderr, err := a.run(ctx, "-C", facts.Root, "worktree", "list", "--porcelain")
+	entries, err := a.worktreeEntries(ctx, facts.Root)
 	if err != nil {
-		return nil, classifyGitError(stderr, err)
+		return nil, err
 	}
-	entries := parseWorktreeList(string(stdout))
 	result := make([]workspace.Worktree, 0, len(entries))
 	for _, entry := range entries {
 		if samePath(entry.Path, facts.Root) {
@@ -289,6 +295,9 @@ func (a *Adapter) ListWorktrees(ctx context.Context, projectID workspace.Project
 		}
 		id := a.idForPath(entry.Path)
 		item := workspace.Worktree{ID: id, ProjectID: projectID, Path: entry.Path, Branch: entry.Branch, Revision: entry.Revision, Status: workspace.WorktreeStatusActive}
+		if entry.Locked {
+			item.ActiveReference = "locked"
+		}
 		item, err = a.inspectPath(ctx, item)
 		if err != nil {
 			return nil, err
@@ -334,6 +343,15 @@ func (a *Adapter) RemoveWorktree(ctx context.Context, id workspace.WorktreeID) e
 	if observed.ActiveReference != "" {
 		return errActiveWorktree
 	}
+	entries, err := a.worktreeEntries(ctx, facts.Root)
+	if err != nil {
+		return err
+	}
+	for _, entry := range entries {
+		if samePath(entry.Path, worktree.Path) && entry.Locked {
+			return errActiveWorktree
+		}
+	}
 	_, stderr, err := a.run(ctx, "-C", facts.Root, "worktree", "remove", worktree.Path)
 	if err != nil {
 		return classifyGitError(stderr, err)
@@ -343,6 +361,14 @@ func (a *Adapter) RemoveWorktree(ctx context.Context, id workspace.WorktreeID) e
 	delete(a.worktreeByPath, filepath.Clean(worktree.Path))
 	a.mu.Unlock()
 	return nil
+}
+
+func (a *Adapter) worktreeEntries(ctx context.Context, root string) ([]worktreeEntry, error) {
+	stdout, stderr, err := a.run(ctx, "-C", root, "worktree", "list", "--porcelain")
+	if err != nil {
+		return nil, classifyGitError(stderr, err)
+	}
+	return parseWorktreeList(string(stdout)), nil
 }
 
 func (a *Adapter) inspectPath(ctx context.Context, worktree workspace.Worktree) (workspace.Worktree, error) {
@@ -455,21 +481,9 @@ func (a *Adapter) idForPath(path string) workspace.WorktreeID {
 	return workspace.WorktreeID("wt-" + hex.EncodeToString(hash[:8]))
 }
 
-func parseWorktreeList(output string) []struct {
-	Path     string
-	Revision string
-	Branch   string
-} {
-	var result []struct {
-		Path     string
-		Revision string
-		Branch   string
-	}
-	var current *struct {
-		Path     string
-		Revision string
-		Branch   string
-	}
+func parseWorktreeList(output string) []worktreeEntry {
+	var result []worktreeEntry
+	var current *worktreeEntry
 	flush := func() {
 		if current != nil && current.Path != "" {
 			result = append(result, *current)
@@ -481,15 +495,13 @@ func parseWorktreeList(output string) []struct {
 		switch {
 		case strings.HasPrefix(line, "worktree "):
 			flush()
-			current = &struct {
-				Path     string
-				Revision string
-				Branch   string
-			}{Path: strings.TrimSpace(strings.TrimPrefix(line, "worktree "))}
+			current = &worktreeEntry{Path: strings.TrimSpace(strings.TrimPrefix(line, "worktree "))}
 		case current != nil && strings.HasPrefix(line, "HEAD "):
 			current.Revision = strings.TrimSpace(strings.TrimPrefix(line, "HEAD "))
 		case current != nil && strings.HasPrefix(line, "branch "):
 			current.Branch = strings.TrimPrefix(line, "branch refs/heads/")
+		case current != nil && line == "locked":
+			current.Locked = true
 		}
 	}
 	flush()
