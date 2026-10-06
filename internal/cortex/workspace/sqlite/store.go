@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"os"
 	"path/filepath"
 
 	_ "modernc.org/sqlite"
@@ -30,6 +31,9 @@ func Open(ctx context.Context, path string) (*Store, error) {
 	cleanPath, err := filepath.Abs(filepath.Clean(path))
 	if err != nil {
 		return nil, fmt.Errorf("open workspace database: canonicalize path: %w", err)
+	}
+	if err := os.MkdirAll(filepath.Dir(cleanPath), 0o700); err != nil {
+		return nil, fmt.Errorf("open workspace database: create parent directory: %w", err)
 	}
 	db, err := sql.Open("sqlite", cleanPath)
 	if err != nil {
