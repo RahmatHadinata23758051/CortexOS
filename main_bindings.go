@@ -11,11 +11,11 @@ import (
 	"github.com/RahmatHadinata23758051/CortexOS/internal/platform"
 )
 
-// Wails generates the frontend bundle at frontend/dist before compiling the
-// root package. Keeping the embed directive here leaves platform code free of
+// Wails generates the frontend bundle at web/dist before compiling the root
+// package. Keeping the embed directive here leaves platform code free of
 // Wails-specific generated paths.
 //
-//go:embed all:frontend/dist
+//go:embed all:web/dist
 var assets embed.FS
 
 func main() {
