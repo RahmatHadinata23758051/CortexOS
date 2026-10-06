@@ -75,6 +75,9 @@ type repositoryFacts struct {
 }
 
 func (a *Adapter) InspectRepository(ctx context.Context, root string) (repositoryFacts, error) {
+	if err := requireContext(ctx); err != nil {
+		return repositoryFacts{}, err
+	}
 	canonicalRoot, err := workspace.CanonicalRoot(root)
 	if err != nil {
 		return repositoryFacts{}, err
