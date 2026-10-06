@@ -500,7 +500,7 @@ func parseWorktreeList(output string) []worktreeEntry {
 			current.Revision = strings.TrimSpace(strings.TrimPrefix(line, "HEAD "))
 		case current != nil && strings.HasPrefix(line, "branch "):
 			current.Branch = strings.TrimPrefix(line, "branch refs/heads/")
-		case current != nil && line == "locked":
+		case current != nil && (line == "locked" || strings.HasPrefix(line, "locked ")):
 			current.Locked = true
 		}
 	}
