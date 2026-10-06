@@ -102,9 +102,17 @@ func (w *Watcher) loop() {
 	root := w.root
 	debounce := w.debounce
 	w.mu.Unlock()
-	defer close(stopped)
-	defer fsWatcher.Close()
-	defer close(changes)
+	defer func() {
+		w.mu.Lock()
+		w.running = false
+		w.watcher = nil
+		w.ctx = nil
+		w.stopped = nil
+		w.mu.Unlock()
+		close(stopped)
+		_ = fsWatcher.Close()
+		close(changes)
+	}()
 
 	pending := make(map[string]workspace.FileChange)
 	timer := time.NewTimer(time.Hour)
