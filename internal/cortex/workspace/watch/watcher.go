@@ -161,6 +161,9 @@ func (w *Watcher) toChange(root string, event fsnotify.Event) (workspace.FileCha
 	if err != nil || relative == "." || filepath.IsAbs(relative) || strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
 		return workspace.FileChange{}, false
 	}
+	if err := verifyEventContainment(root, event.Name); err != nil {
+		return workspace.FileChange{}, false
+	}
 	operation := workspace.FileModified
 	switch {
 	case event.Op&fsnotify.Create != 0:
@@ -171,6 +174,32 @@ func (w *Watcher) toChange(root string, event fsnotify.Event) (workspace.FileCha
 		operation = workspace.FileRenamed
 	}
 	return workspace.FileChange{ID: eventID(), CorrelationID: string(eventID()), RootID: root, RelativePath: filepath.ToSlash(relative), Operation: operation, ObservedAt: time.Now().UTC()}, true
+}
+
+func verifyEventContainment(root, candidate string) error {
+	resolvedRoot, err := filepath.EvalSymlinks(root)
+	if err != nil {
+		return err
+	}
+	ancestor := candidate
+	for {
+		resolved, resolveErr := filepath.EvalSymlinks(ancestor)
+		if resolveErr == nil {
+			relative, relativeErr := filepath.Rel(resolvedRoot, resolved)
+			if relativeErr != nil || relative == ".." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) || filepath.IsAbs(relative) {
+				return workspace.NewError(workspace.ErrPathDenied, "watch event resolves outside approved root")
+			}
+			return nil
+		}
+		if !os.IsNotExist(resolveErr) {
+			return resolveErr
+		}
+		parent := filepath.Dir(ancestor)
+		if parent == ancestor {
+			return workspace.NewError(workspace.ErrPathDenied, "watch event cannot be contained")
+		}
+		ancestor = parent
+	}
 }
 
 func addDirectories(watcher *fsnotify.Watcher, root string) error {
