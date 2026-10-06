@@ -7,40 +7,40 @@
 
 ```text
 User goal
-  â”‚
-  â–¼
+  |
+  v
 Plan + acceptance criteria
-  â”‚
-  â–¼
+  |
+  v
 Task graph (DAG)
-  â”‚ validate dependencies, scope, permissions
-  â–¼
-Ready queue â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
-  â”‚                        â”‚ blocked/canceled
-  â–¼                        â–¼
+  | validate dependencies, scope, permissions
+  v
+Ready queue ------------------+
+  |                           | blocked/canceled
+  v                           v
 Dispatch envelope       blocked event
-  â”‚
-  â”œâ”€ Workspace context: project, worktree, allowed paths
-  â”œâ”€ Staff context: role, skills, permissions
-  â”œâ”€ Harness policy: tools, commands, limits, timeout
-  â””â”€ Engine route: native / Pi / OMP
-  â”‚
-  â–¼
+  |
+  +- Workspace context: project, worktree, allowed paths
+  +- Staff context: role, skills, permissions
+  +- Harness policy: tools, commands, limits, timeout
+  +- Engine route: native / Pi / OMP
+  |
+  v
 Worker execution
-  â”‚
-  â”œâ”€ structured events and tool evidence
-  â”œâ”€ files/tests/command results
-  â””â”€ cancellation, timeout, or failure
-  â”‚
-  â–¼
+  |
+  +- structured events and tool evidence
+  +- files/tests/command results
+  +- cancellation, timeout, or failure
+  |
+  v
 Orchestra collects evidence
-  â”‚
-  â–¼
+  |
+  v
 Inspector evaluates acceptance criteria
-  â”œâ”€ accepted â†’ merge authority review â†’ integrated
-  â”œâ”€ retryable â†’ bounded retry / alternate engine
-  â”œâ”€ rejected â†’ remediation task
-  â””â”€ blocked â†’ human/project-lead decision
+  +- accepted -> merge authority review -> integrated
+  +- retryable -> bounded retry / alternate engine
+  +- rejected -> remediation task
+  +- blocked -> human/project-lead decision
 ```
 
 ## Dispatch envelope

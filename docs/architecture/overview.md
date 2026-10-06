@@ -11,32 +11,26 @@ CortexOS is a local-first desktop system for coordinating multiple projects, log
 The runtime is divided into five conceptual layers plus replaceable engine adapters:
 
 ```text
-â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
-â”‚ Workspace                                                     â”‚
-â”‚ projects Â· worktrees Â· SQLite Â· Markdown Vault Â· retrieval    â”‚
-â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”¬â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
-                               â”‚ durable workspace facts
-â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â–¼â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
-â”‚ Orchestra                                                     â”‚
-â”‚ plans Â· DAG scheduler Â· dispatch Â· retries Â· inspection       â”‚
-â”‚ merge authority Â· execution outcome authority                 â”‚
-â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”¬â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
-                               â”‚ governed task envelopes
-â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â–¼â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
-â”‚ Harness                                                       â”‚
-â”‚ Tool Broker Â· sandbox Â· routing Â· skills Â· JSONL lifecycle    â”‚
-â”‚ resource governor Â· child-process policy                      â”‚
-â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”¬â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
-                               â”‚ capabilities and evidence
-â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â–¼â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
-â”‚ Staff                                                         â”‚
-â”‚ logical roles Â· permissions Â· memory context Â· assigned task   â”‚
-â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”¬â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
-                               â”‚ selected execution adapter
-â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â–¼â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
-â”‚ Engine adapters                                               â”‚
-â”‚ native Go Â· Pi Â· OMP Â· future engines                         â”‚
-â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
+Workspace
+  projects  worktrees  SQLite  Markdown Vault  retrieval
+   durable workspace facts
+
+Orchestra
+  plans  DAG scheduler  dispatch  retries  inspection
+  merge authority  execution outcome authority
+   governed task envelopes
+
+Harness
+  Tool Broker  sandbox  routing  skills  JSONL lifecycle
+  resource governor  child-process policy
+   capabilities and evidence
+
+Staff
+  logical roles  permissions  memory context  assigned task
+   selected execution adapter
+
+Engine adapters
+  native Go  Pi  OMP  future engines
 ```
 
 ## Layer responsibilities
@@ -79,10 +73,10 @@ Provide replaceable implementations behind a stable harness contract:
 ## Dependency direction
 
 ```text
-UI / Wails bindings â†’ application services â†’ Orchestra â†’ Harness â†’ Workspace/platform
-                                         â””â”€â”€â”€â”€â”€â”€â”€â”€â†’ Staff contracts
-Engine adapters â†’ Harness contracts
-Persistence and OS adapters â†’ Workspace/platform ports
+UI / Wails bindings -> application services -> Orchestra -> Harness -> Workspace/platform
+                                             +-> Staff contracts
+Engine adapters -> Harness contracts
+Persistence and OS adapters -> Workspace/platform ports
 ```
 
 Lower layers must not import UI concerns. Engine adapters must not import Orchestra internals. Staff definitions must depend on contracts, not process implementations. Cross-layer access should use narrow ports/interfaces and explicit command/query boundaries.
@@ -102,15 +96,15 @@ Lower layers must not import UI concerns. Engine adapters must not import Orches
 
 ```text
 Draft plan
-  â†’ validated task graph
-  â†’ ready queue
-  â†’ dispatched with workspace + policy context
-  â†’ running
-  â†’ worker evidence collected
-  â†’ Inspector validates acceptance criteria
-  â†’ accepted / retryable failure / blocked / rejected
-  â†’ merge or remediation
-  â†’ completed with evidence
+  -> validated task graph
+  -> ready queue
+  -> dispatched with workspace + policy context
+  -> running
+  -> worker evidence collected
+  -> Inspector validates acceptance criteria
+  -> accepted / retryable failure / blocked / rejected
+  -> merge or remediation
+  -> completed with evidence
 ```
 
 A task may only be marked complete when acceptance criteria, relevant tests, security checks, and Inspector review have passed. An engine exit code of zero is insufficient on its own.

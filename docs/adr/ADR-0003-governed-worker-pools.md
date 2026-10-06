@@ -6,7 +6,7 @@
 
 ## Context
 
-CortexOS may expose 10â€“20 logical Staff, but starting one AI CLI process per Staff would exceed consumer-laptop memory budgets and make lifecycle control fragile.
+CortexOS may expose 10-20 logical Staff, but starting one AI CLI process per Staff would exceed consumer-laptop memory budgets and make lifecycle control fragile.
 
 ## Decision
 
