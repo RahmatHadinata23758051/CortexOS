@@ -24,7 +24,7 @@ func TestWorkspacePortsAreNarrowAndContextAware(t *testing.T) {
 		if method.Name == "Close" {
 			continue
 		}
-		if method.Type.NumIn() < 2 || method.Type.In(1) != reflect.TypeOf((*context.Context)(nil)).Elem() {
+		if method.Type.NumIn() < 1 || method.Type.In(0) != reflect.TypeOf((*context.Context)(nil)).Elem() {
 			t.Fatalf("%s must accept context.Context", method.Name)
 		}
 	}
