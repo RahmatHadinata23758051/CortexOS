@@ -15,7 +15,9 @@ type MemoryWorkspace struct {
 	worktrees map[WorktreeID]Worktree
 	notes     map[NoteID]VaultNote
 	documents map[string]RetrievalDocument
+	changes   chan FileChange
 	open      bool
+	watching  bool
 }
 
 func NewMemoryWorkspace() *MemoryWorkspace {
@@ -24,6 +26,7 @@ func NewMemoryWorkspace() *MemoryWorkspace {
 		worktrees: make(map[WorktreeID]Worktree),
 		notes:     make(map[NoteID]VaultNote),
 		documents: make(map[string]RetrievalDocument),
+		changes:   make(chan FileChange, 16),
 	}
 }
 
@@ -41,7 +44,52 @@ func (m *MemoryWorkspace) Close() error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.open = false
+	m.watching = false
 	return nil
+}
+
+func (m *MemoryWorkspace) Start(ctx context.Context, root string) (<-chan FileChange, error) {
+	if err := checkContext(ctx); err != nil {
+		return nil, err
+	}
+	if _, err := CanonicalRoot(root); err != nil {
+		return nil, err
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.watching {
+		return nil, NewError(ErrConflict, "memory watcher is already running")
+	}
+	m.watching = true
+	return m.changes, nil
+}
+
+func (m *MemoryWorkspace) Stop() error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.watching = false
+	return nil
+}
+
+// PublishChange injects a synthetic event for contract tests. Production
+// watchers must produce events only from approved filesystem observations.
+func (m *MemoryWorkspace) PublishChange(ctx context.Context, change FileChange) error {
+	if err := checkContext(ctx); err != nil {
+		return err
+	}
+	m.mu.RLock()
+	watching := m.watching
+	changes := m.changes
+	m.mu.RUnlock()
+	if !watching {
+		return NewError(ErrStorageUnavailable, "memory watcher is not running")
+	}
+	select {
+	case changes <- change:
+		return nil
+	default:
+		return NewError(ErrWatcherOverflow, "memory watcher event buffer is full")
+	}
 }
 
 func (m *MemoryWorkspace) SchemaVersion(ctx context.Context) (string, error) {
