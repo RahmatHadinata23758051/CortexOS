@@ -144,6 +144,7 @@ func (s *Store) CreateNote(ctx context.Context, note workspace.VaultNote) (works
 	}
 	if s.metadata != nil {
 		if err := s.metadata.UpsertNoteMetadata(ctx, document.Note); err != nil {
+			_ = os.Remove(target)
 			return workspace.VaultNote{}, workspace.WrapError(workspace.ErrStorageUnavailable, "synchronize Vault note metadata", err)
 		}
 	}
@@ -158,7 +159,11 @@ func (s *Store) UpdateNote(ctx context.Context, note workspace.VaultNote, expect
 	if err != nil {
 		return workspace.VaultNote{}, err
 	}
-	current, err := s.readDocument(target)
+	currentData, err := os.ReadFile(target)
+	if err != nil {
+		return workspace.VaultNote{}, workspace.WrapError(workspace.ErrStorageUnavailable, "read current Vault note", err)
+	}
+	current, err := Parse(currentData)
 	if err != nil {
 		return workspace.VaultNote{}, err
 	}
@@ -190,6 +195,7 @@ func (s *Store) UpdateNote(ctx context.Context, note workspace.VaultNote, expect
 	}
 	if s.metadata != nil {
 		if err := s.metadata.UpsertNoteMetadata(ctx, document.Note); err != nil {
+			_ = atomicWrite(ctx, target, currentData)
 			return workspace.VaultNote{}, workspace.WrapError(workspace.ErrStorageUnavailable, "synchronize Vault note metadata", err)
 		}
 	}
