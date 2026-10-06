@@ -40,7 +40,8 @@ $ignored = @(
     "_harvest/raw",
     "build/bin",
     "web/node_modules/placeholder",
-    "web/dist/placeholder"
+    "web/dist/placeholder",
+    "frontend/dist/placeholder"
 )
 foreach ($path in $ignored) {
     git check-ignore -q -- $path

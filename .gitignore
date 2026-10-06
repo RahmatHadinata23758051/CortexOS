@@ -132,7 +132,8 @@ web/.nyc_output/
 web/wailsjs/
 web/package.json.md5
 frontend/node_modules/
-frontend/dist/
+frontend/dist/*
+!frontend/dist/.gitkeep
 frontend/build/
 frontend/.vite/
 frontend/.cache/

@@ -2,8 +2,8 @@ package platform
 
 import (
 	"context"
-	"embed"
 	"fmt"
+	"io/fs"
 	"sync"
 
 	"github.com/wailsapp/wails/v2/pkg/application"
@@ -11,8 +11,14 @@ import (
 	"github.com/wailsapp/wails/v2/pkg/options/windows"
 )
 
-//go:embed assets/*
-var assets embed.FS
+// AssetFS is the frontend asset filesystem used by the Wails shell.
+// The Wails CLI supplies the generated frontend bundle at build time.
+var AssetFS fs.FS
+
+// SetAssetFS installs the generated frontend bundle before the app starts.
+func SetAssetFS(assets fs.FS) {
+	AssetFS = assets
+}
 
 // Application owns the Wails lifecycle boundary. Domain services are passed in
 // as bindings and remain independent from the desktop framework.
@@ -30,7 +36,7 @@ func New() *Application {
 		Height:           800,
 		MinWidth:         960,
 		MinHeight:        640,
-		Assets:           assets,
+		Assets:           AssetFS,
 		BackgroundColour: options.NewRGB(16, 21, 29),
 		Windows: &windows.Options{
 			WebviewIsTransparent: false,
