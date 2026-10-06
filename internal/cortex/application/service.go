@@ -28,6 +28,7 @@ type RuntimeSnapshot struct {
 // Service owns application behavior and does not depend on Wails or frontend packages.
 type Service struct {
 	workspace *workspace.Service
+	orchestra OrchestraPort
 }
 
 // NewService creates the minimal Phase 1 application service.
@@ -39,6 +40,16 @@ func NewService() *Service {
 // without coupling the application package to Wails or frontend DTOs.
 func NewServiceWithWorkspace(workspaceService *workspace.Service) *Service {
 	return &Service{workspace: workspaceService}
+}
+
+// NewServiceWithOrchestra adds the optional Orchestra application boundary.
+func NewServiceWithOrchestra(orchestraService OrchestraPort) *Service {
+	return &Service{orchestra: orchestraService}
+}
+
+// NewServiceWithWorkspaceAndOrchestra adds both boundaries.
+func NewServiceWithWorkspaceAndOrchestra(workspaceService *workspace.Service, orchestraService OrchestraPort) *Service {
+	return &Service{workspace: workspaceService, orchestra: orchestraService}
 }
 
 // GetRuntimeSnapshot returns a deterministic local runtime status.

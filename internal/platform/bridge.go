@@ -36,3 +36,19 @@ func (b *Bridge) RebuildWorkspaceRetrieval(request application.WorkspaceMutation
 func (b *Bridge) RegisterWorkspaceProject(request application.WorkspaceProjectRequest) (application.WorkspaceProject, error) {
 	return b.service.RegisterWorkspaceProject(context.Background(), request)
 }
+
+func (b *Bridge) ListOrchestraTasks(request application.OrchestraTaskListRequest) ([]application.OrchestraTaskSummary, error) {
+	return b.service.ListOrchestraTasks(context.Background(), request)
+}
+
+func (b *Bridge) GetOrchestraTask(request application.OrchestraTaskRequest) (application.OrchestraTaskDetail, error) {
+	return b.service.GetOrchestraTask(context.Background(), request)
+}
+
+func (b *Bridge) CancelOrchestraTask(request application.OrchestraTaskRequest) error {
+	return b.service.CancelOrchestraTask(context.Background(), request)
+}
+
+func (b *Bridge) RetryOrchestraTask(request application.OrchestraTaskRequest) error {
+	return b.service.RetryOrchestraTask(context.Background(), request)
+}
