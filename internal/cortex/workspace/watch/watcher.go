@@ -85,8 +85,6 @@ func (w *Watcher) Stop() error {
 	}
 	cancel := w.cancel
 	stopped := w.stopped
-	w.running = false
-	w.cancel = nil
 	w.mu.Unlock()
 	cancel()
 	<-stopped
