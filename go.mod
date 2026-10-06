@@ -5,6 +5,7 @@ go 1.25.0
 toolchain go1.26.3
 
 require (
+	github.com/fsnotify/fsnotify v1.10.1
 	github.com/wailsapp/wails/v2 v2.16.0
 	modernc.org/sqlite v1.59.0
 )
