@@ -1,0 +1,18 @@
+{
+  "$schema": "https://wails.io/schemas/config.v2.json",
+  "name": "CortexOS",
+  "version": "2",
+  "frontend:dir": "web",
+  "frontend:install": "npm ci",
+  "frontend:build": "npm run build",
+  "frontend:dev:build": "npm run build",
+  "assetdir": "web/dist",
+  "build:dir": "build",
+  "outputfilename": "cortexos",
+  "info": {
+    "companyName": "CortexOS",
+    "productName": "CortexOS",
+    "productVersion": "0.1.0",
+    "comments": "Local-first governed AI agency workspace"
+  }
+}
