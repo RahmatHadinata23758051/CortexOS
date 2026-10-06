@@ -1,7 +1,7 @@
-﻿# CortexOS Foundation Contracts
+# CortexOS Foundation Contracts
 
-**Issue:** BAN-28  
-**Status:** Phase 0 contract  
+**Issue:** BAN-28
+**Status:** Phase 0 contract
 **Purpose:** Define the smallest reproducible Go + Wails + React/TypeScript/Phaser foundation without implementing product features.
 
 ## Contract principles
@@ -132,4 +132,3 @@ The first vertical slice should include only:
 5. Clean shutdown and a test that exercises the application service without a live LLM or network.
 
 Out of scope for this contract: project CRUD, worktree mutations, real engine workers, task scheduling, Phaser office simulation, provider authentication, and production packaging.
-

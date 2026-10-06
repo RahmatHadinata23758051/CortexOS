@@ -1,6 +1,6 @@
-﻿# CortexOS Dependency Policy
+# CortexOS Dependency Policy
 
-**Issue:** BAN-28  
+**Issue:** BAN-28
 **Status:** Foundation policy
 
 ## Review record required for each direct dependency
@@ -30,4 +30,3 @@
 ## Locking and update policy
 
 Lockfiles and `go.sum` are committed. Dependency upgrades are separate atomic changes, include release notes/security advisories where relevant, and rerun the complete foundation validation. A dependency upgrade must not be hidden inside an unrelated feature commit.
-
