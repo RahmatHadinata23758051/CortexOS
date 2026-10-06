@@ -79,6 +79,11 @@ func TestControlledWorktreeLifecycleAgainstDisposableRepository(t *testing.T) {
 		t.Fatalf("inspected worktree = %#v", inspected)
 	}
 
+	runGit(t, repositoryRoot, "worktree", "lock", "--reason", "active-reference", worktreePath)
+	if err := adapter.RemoveWorktree(ctx, created.ID); workspace.ErrorCodeOf(err) != workspace.ErrConflict {
+		t.Fatalf("locked removal code = %q, want %q", workspace.ErrorCodeOf(err), workspace.ErrConflict)
+	}
+	runGit(t, repositoryRoot, "worktree", "unlock", worktreePath)
 	if err := adapter.RemoveWorktree(ctx, created.ID); err != nil {
 		t.Fatal(err)
 	}
