@@ -87,15 +87,15 @@ Ensure-Directory $extractedRoot
 # Referensi disimpan sebagai source material. Engine utama tetap memakai adapter CortexOS.
 # Pi resmi berada di badlogic/pi-mono; package coding-agent bukan repository GitHub terpisah.
 $repositories = @(
-    @{ Name = "pi"; Url = "https://github.com/badlogic/pi-mono.git"; Ref = "main" },
-    @{ Name = "oh-my-pi"; Url = "https://github.com/can1357/oh-my-pi.git"; Ref = "main" },
-    @{ Name = "agency-agents"; Url = "https://github.com/msitarzewski/agency-agents.git"; Ref = "main" },
-    @{ Name = "agent-teams-ai"; Url = "https://github.com/777genius/agent-teams-ai.git"; Ref = "main" },
-    @{ Name = "ai-town"; Url = "https://github.com/a16z-infra/ai-town.git"; Ref = "main" },
-    @{ Name = "ai-office"; Url = "https://github.com/ChristianFJung/AIOffice.git"; Ref = "main" },
-    @{ Name = "pixel-agents"; Url = "https://github.com/pixel-agents-hq/pixel-agents.git"; Ref = "main" },
-    @{ Name = "chatdev"; Url = "https://github.com/OpenBMB/ChatDev.git"; Ref = "main" },
-    @{ Name = "opencode-harness"; Url = "https://github.com/Awaiswilll/opencode-harness.git"; Ref = "main" }
+    @{ Name = "pi"; Url = "https://github.com/badlogic/pi-mono.git"; Ref = "main"; AdoptionStatus = "reference-only" },
+    @{ Name = "oh-my-pi"; Url = "https://github.com/can1357/oh-my-pi.git"; Ref = "main"; AdoptionStatus = "reference-only-nested-license-review" },
+    @{ Name = "agency-agents"; Url = "https://github.com/msitarzewski/agency-agents.git"; Ref = "main"; AdoptionStatus = "reference-only" },
+    @{ Name = "agent-teams-ai"; Url = "https://github.com/777genius/agent-teams-ai.git"; Ref = "main"; AdoptionStatus = "blocked-pending-legal-review" },
+    @{ Name = "ai-town"; Url = "https://github.com/a16z-infra/ai-town.git"; Ref = "main"; AdoptionStatus = "reference-only" },
+    @{ Name = "ai-office"; Url = "https://github.com/ChristianFJung/AIOffice.git"; Ref = "main"; AdoptionStatus = "reference-only-asset-review" },
+    @{ Name = "pixel-agents"; Url = "https://github.com/pixel-agents-hq/pixel-agents.git"; Ref = "main"; AdoptionStatus = "reference-only-asset-review" },
+    @{ Name = "chatdev"; Url = "https://github.com/OpenBMB/ChatDev.git"; Ref = "main"; AdoptionStatus = "reference-only" },
+    @{ Name = "opencode-harness"; Url = "https://github.com/Awaiswilll/opencode-harness.git"; Ref = "main"; AdoptionStatus = "blocked-ambiguous-license" }
 )
 
 if (-not $SkipClone) {
@@ -128,6 +128,7 @@ $manifest = foreach ($repo in $repositories) {
             licenseFiles = @()
             repositoryStatus = "missing"
             licenseStatus = "missing-review-blocked"
+            adoptionStatus = $repo.AdoptionStatus
             reviewed = $false
         }
         continue
@@ -142,6 +143,7 @@ $manifest = foreach ($repo in $repositories) {
             licenseFiles = @()
             repositoryStatus = "invalid"
             licenseStatus = "missing-review-blocked"
+            adoptionStatus = $repo.AdoptionStatus
             reviewed = $false
         }
         continue
@@ -162,6 +164,7 @@ $manifest = foreach ($repo in $repositories) {
         licenseFiles = $licenseFiles
         repositoryStatus = "cloned"
         licenseStatus = $licenseStatus
+        adoptionStatus = $repo.AdoptionStatus
         reviewed = if ($null -ne $previous) { [bool]$previous.reviewed } else { $false }
         reviewNotes = if ($null -ne $previous) { $previous.reviewNotes } else { $null }
     }
