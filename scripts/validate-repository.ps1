@@ -59,7 +59,10 @@ if (-not (Test-Path -LiteralPath (Join-Path $root "_harvest/harvest-manifest.jso
 
 Write-Host "[4/8] Secret-pattern review" -ForegroundColor Cyan
 $tracked = @(git ls-files)
-$scanFiles = @($tracked | Where-Object { $_ -notmatch '(^|/)(\.git|_harvest/raw|node_modules|build/bin|web/wailsjs)(/|$)' })
+$scanFiles = @($tracked | Where-Object {
+    $_ -notmatch '(^|/)(\.git|_harvest/raw|node_modules|build/bin|web/wailsjs)(/|$)' -and
+    (Test-Path -LiteralPath $_ -PathType Leaf)
+})
 $patterns = @('-----BEGIN (RSA |EC |OPENSSH )?PRIVATE KEY-----','sk-[A-Za-z0-9]{16,}','xox[baprs]-[A-Za-z0-9-]+','ghp_[A-Za-z0-9]{20,}')
 foreach ($pattern in $patterns) {
     $matches = Select-String -Path $scanFiles -Pattern $pattern -ErrorAction SilentlyContinue
