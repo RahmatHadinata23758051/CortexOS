@@ -1,6 +1,7 @@
 package vault
 
 import (
+	"strings"
 	"testing"
 	"time"
 
@@ -41,13 +42,21 @@ func TestParseRejectsUnknownAndMalformedMetadata(t *testing.T) {
 
 	base := "---\nid: note-1\nproject_id: project-1\nrelative_path: note.md\ntitle: Note\nformat_version: cortexos.vault.v1\nsource: manual\nauthor: tester\ncreated_at: 2026-10-06T12:00:00Z\nupdated_at: 2026-10-06T12:00:00Z\ncontent_hash: sha256:bad\n---\n\nbody\n"
 	for _, fixture := range []string{
-		base + "unknown: value\n",
+		strings.Replace(base, "content_hash: sha256:bad\n", "content_hash: sha256:bad\nunknown: value\n", 1),
 		"---\nid: note-1\n---\nbody",
 		"---\nid: note-1\nid: duplicate\n---\n\nbody",
 	} {
 		if _, err := Parse([]byte(fixture)); workspace.ErrorCodeOf(err) != workspace.ErrInvalidRequest && workspace.ErrorCodeOf(err) != workspace.ErrConflict {
 			t.Errorf("fixture error code = %q, err=%v", workspace.ErrorCodeOf(err), err)
 		}
+	}
+}
+
+func TestParseRejectsInvalidUTF8(t *testing.T) {
+	t.Parallel()
+
+	if _, err := Parse([]byte{0xff, 0xfe}); workspace.ErrorCodeOf(err) != workspace.ErrInvalidRequest {
+		t.Fatalf("UTF-8 error code = %q, want %q", workspace.ErrorCodeOf(err), workspace.ErrInvalidRequest)
 	}
 }
 

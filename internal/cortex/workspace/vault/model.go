@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/RahmatHadinata23758051/CortexOS/internal/cortex/workspace"
 )
@@ -18,6 +19,9 @@ type Document struct {
 }
 
 func Parse(data []byte) (Document, error) {
+	if !utf8.Valid(data) {
+		return Document{}, workspace.NewError(workspace.ErrInvalidRequest, "Vault note is not valid UTF-8")
+	}
 	text := string(data)
 	if !strings.HasPrefix(text, "---\n") {
 		return Document{}, workspace.NewError(workspace.ErrInvalidRequest, "Vault note front matter opening delimiter is missing")
