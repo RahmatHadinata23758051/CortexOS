@@ -2,11 +2,17 @@ package git
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/RahmatHadinata23758051/CortexOS/internal/cortex/workspace"
 )
@@ -20,16 +26,47 @@ var (
 )
 
 type Adapter struct {
-	runner CommandRunner
+	mu             sync.RWMutex
+	runner         CommandRunner
+	projects       workspace.ProjectRegistry
+	worktreeRoot   string
+	worktrees      map[workspace.WorktreeID]workspace.Worktree
+	worktreeByPath map[string]workspace.WorktreeID
 }
 
-func New() *Adapter { return &Adapter{runner: defaultRunner()} }
+func New() *Adapter {
+	return &Adapter{
+		runner:         defaultRunner(),
+		worktrees:      make(map[workspace.WorktreeID]workspace.Worktree),
+		worktreeByPath: make(map[string]workspace.WorktreeID),
+	}
+}
 
 func NewWithRunner(runner CommandRunner) (*Adapter, error) {
 	if runner == nil {
 		return nil, errors.New("git runner is required")
 	}
-	return &Adapter{runner: runner}, nil
+	adapter := New()
+	adapter.runner = runner
+	return adapter, nil
+}
+
+func NewWithRegistry(registry workspace.ProjectRegistry, runner CommandRunner, worktreeRoot string) (*Adapter, error) {
+	if registry == nil {
+		return nil, errors.New("project registry is required")
+	}
+	if runner == nil {
+		runner = defaultRunner()
+	}
+	canonicalRoot, err := workspace.CanonicalRoot(worktreeRoot)
+	if err != nil {
+		return nil, fmt.Errorf("configure Git worktree root: %w", err)
+	}
+	adapter := New()
+	adapter.runner = runner
+	adapter.projects = registry
+	adapter.worktreeRoot = canonicalRoot
+	return adapter, nil
 }
 
 type repositoryFacts struct {
@@ -61,6 +98,10 @@ func (a *Adapter) currentBranch(ctx context.Context, root string) (string, error
 	stdout, stderr, err := a.run(ctx, "-C", root, "symbolic-ref", "--quiet", "--short", "HEAD")
 	if err != nil {
 		if strings.TrimSpace(string(stderr)) != "" {
+			message := strings.ToLower(strings.TrimSpace(string(stderr)))
+			if strings.Contains(message, "detached") || strings.Contains(message, "symbolic ref") {
+				return "HEAD", nil
+			}
 			return "", classifyGitError(stderr, err)
 		}
 		return "HEAD", nil
@@ -91,8 +132,10 @@ func classifyGitError(stderr []byte, cause error) error {
 	switch {
 	case strings.Contains(message, "not a git repository"):
 		return workspace.WrapError(workspace.ErrNotGitRepository, "path is not a Git repository", cause)
-	case strings.Contains(message, "already exists"), strings.Contains(message, "is already checked out"):
+	case strings.Contains(message, "already exists"), strings.Contains(message, "is already checked out"), strings.Contains(message, "already registered"):
 		return workspace.WrapError(workspace.ErrConflict, "Git worktree conflicts with existing state", cause)
+	case strings.Contains(message, "is dirty"), strings.Contains(message, "contains modified or untracked files"):
+		return workspace.WrapError(workspace.ErrConflict, "Git worktree has uncommitted changes", cause)
 	default:
 		return workspace.WrapError(workspace.ErrInternal, "Git operation failed", cause)
 	}
@@ -107,6 +150,13 @@ func validateBranch(branch string) error {
 	return nil
 }
 
+func validateRevision(revision string) error {
+	if revision == "" || strings.HasPrefix(revision, "-") || strings.ContainsAny(revision, "\r\n\x00") {
+		return workspace.NewError(workspace.ErrInvalidRequest, "revision is invalid")
+	}
+	return nil
+}
+
 func samePath(left, right string) bool {
 	if filepath.VolumeName(left) != filepath.VolumeName(right) {
 		return false
@@ -117,12 +167,292 @@ func samePath(left, right string) bool {
 	return filepath.Clean(left) == filepath.Clean(right)
 }
 
-func formatGitFailure(operation string, stderr []byte, cause error) error {
-	if cause == nil {
-		cause = errors.New("unknown git failure")
+func (a *Adapter) InspectWorktree(ctx context.Context, id workspace.WorktreeID) (workspace.Worktree, error) {
+	if err := requireContext(ctx); err != nil {
+		return workspace.Worktree{}, err
 	}
-	if strings.TrimSpace(string(stderr)) == "" {
-		return workspace.WrapError(workspace.ErrInternal, fmt.Sprintf("Git %s failed", operation), cause)
+	a.mu.RLock()
+	worktree, ok := a.worktrees[id]
+	a.mu.RUnlock()
+	if !ok {
+		return workspace.Worktree{}, workspace.NewError(workspace.ErrNotFound, "worktree does not exist")
 	}
-	return workspace.WrapError(workspace.ErrInternal, fmt.Sprintf("Git %s failed", operation), cause)
+	return a.inspectPath(ctx, worktree)
+}
+
+func (a *Adapter) CreateWorktree(ctx context.Context, worktree workspace.Worktree) (workspace.Worktree, error) {
+	if err := requireContext(ctx); err != nil {
+		return workspace.Worktree{}, err
+	}
+	if a.projects == nil || a.worktreeRoot == "" {
+		return workspace.Worktree{}, workspace.NewError(workspace.ErrInvalidRequest, "Git adapter is not configured with project registry and worktree root")
+	}
+	if worktree.ID == "" || worktree.ProjectID == "" || worktree.Path == "" {
+		return workspace.Worktree{}, workspace.NewError(workspace.ErrInvalidRequest, "worktree id, project id, and path are required")
+	}
+	if err := validateBranch(worktree.Branch); err != nil {
+		return workspace.Worktree{}, err
+	}
+	if worktree.Revision != "" {
+		if err := validateRevision(worktree.Revision); err != nil {
+			return workspace.Worktree{}, err
+		}
+	}
+	project, err := a.projects.GetProject(ctx, worktree.ProjectID)
+	if err != nil {
+		return workspace.Worktree{}, err
+	}
+	facts, err := a.InspectRepository(ctx, project.RepositoryRoot)
+	if err != nil {
+		return workspace.Worktree{}, err
+	}
+	target, err := a.approvedTarget(worktree.ProjectID, worktree.Path)
+	if err != nil {
+		return workspace.Worktree{}, err
+	}
+	if _, err := os.Stat(target); err == nil {
+		return workspace.Worktree{}, workspace.NewError(workspace.ErrConflict, "worktree path already exists")
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return workspace.Worktree{}, workspace.WrapError(workspace.ErrPathDenied, "worktree path cannot be inspected", err)
+	}
+	if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+		return workspace.Worktree{}, workspace.WrapError(workspace.ErrStorageUnavailable, "worktree parent cannot be created", err)
+	}
+	base := project.DefaultBranch
+	if worktree.Revision != "" {
+		base = worktree.Revision
+	}
+	if base == "" {
+		base = "HEAD"
+	}
+	_, stderr, err := a.run(ctx, "-C", facts.Root, "worktree", "add", "-b", worktree.Branch, target, base)
+	if err != nil {
+		return workspace.Worktree{}, classifyGitError(stderr, err)
+	}
+	created, err := a.inspectPath(ctx, workspace.Worktree{
+		ID:        worktree.ID,
+		ProjectID: worktree.ProjectID,
+		Path:      target,
+		Branch:    worktree.Branch,
+		Status:    workspace.WorktreeStatusActive,
+	})
+	if err != nil {
+		return workspace.Worktree{}, workspace.WrapError(workspace.ErrInternal, "created worktree could not be verified", err)
+	}
+	created.CreatedAt = time.Now().UTC()
+	created.UpdatedAt = created.CreatedAt
+	created.Status = workspace.WorktreeStatusActive
+	a.remember(created)
+	return created, nil
+}
+
+func (a *Adapter) ListWorktrees(ctx context.Context, projectID workspace.ProjectID) ([]workspace.Worktree, error) {
+	if err := requireContext(ctx); err != nil {
+		return nil, err
+	}
+	if a.projects == nil {
+		return nil, workspace.NewError(workspace.ErrInvalidRequest, "Git adapter is not configured with project registry")
+	}
+	project, err := a.projects.GetProject(ctx, projectID)
+	if err != nil {
+		return nil, err
+	}
+	facts, err := a.InspectRepository(ctx, project.RepositoryRoot)
+	if err != nil {
+		return nil, err
+	}
+	stdout, stderr, err := a.run(ctx, "-C", facts.Root, "worktree", "list", "--porcelain")
+	if err != nil {
+		return nil, classifyGitError(stderr, err)
+	}
+	entries := parseWorktreeList(string(stdout))
+	result := make([]workspace.Worktree, 0, len(entries))
+	for _, entry := range entries {
+		if samePath(entry.Path, facts.Root) {
+			continue
+		}
+		if _, err := a.approvedTarget(projectID, entry.Path); err != nil {
+			return nil, err
+		}
+		id := a.idForPath(entry.Path)
+		item := workspace.Worktree{ID: id, ProjectID: projectID, Path: entry.Path, Branch: entry.Branch, Revision: entry.Revision, Status: workspace.WorktreeStatusActive}
+		item, err = a.inspectPath(ctx, item)
+		if err != nil {
+			return nil, err
+		}
+		a.remember(item)
+		result = append(result, item)
+	}
+	sort.Slice(result, func(i, j int) bool { return result[i].ID < result[j].ID })
+	return result, nil
+}
+
+func (a *Adapter) RemoveWorktree(ctx context.Context, id workspace.WorktreeID) error {
+	if err := requireContext(ctx); err != nil {
+		return err
+	}
+	if a.projects == nil {
+		return workspace.NewError(workspace.ErrInvalidRequest, "Git adapter is not configured with project registry")
+	}
+	a.mu.RLock()
+	worktree, ok := a.worktrees[id]
+	a.mu.RUnlock()
+	if !ok {
+		return workspace.NewError(workspace.ErrNotFound, "worktree does not exist")
+	}
+	project, err := a.projects.GetProject(ctx, worktree.ProjectID)
+	if err != nil {
+		return err
+	}
+	facts, err := a.InspectRepository(ctx, project.RepositoryRoot)
+	if err != nil {
+		return err
+	}
+	if _, err := a.approvedTarget(worktree.ProjectID, worktree.Path); err != nil {
+		return err
+	}
+	observed, err := a.inspectPath(ctx, worktree)
+	if err != nil {
+		return err
+	}
+	if observed.Dirty {
+		return errDirtyWorktree
+	}
+	if observed.ActiveReference != "" {
+		return errActiveWorktree
+	}
+	_, stderr, err := a.run(ctx, "-C", facts.Root, "worktree", "remove", worktree.Path)
+	if err != nil {
+		return classifyGitError(stderr, err)
+	}
+	a.mu.Lock()
+	delete(a.worktrees, id)
+	delete(a.worktreeByPath, filepath.Clean(worktree.Path))
+	a.mu.Unlock()
+	return nil
+}
+
+func (a *Adapter) inspectPath(ctx context.Context, worktree workspace.Worktree) (workspace.Worktree, error) {
+	path, err := workspace.CanonicalRoot(worktree.Path)
+	if err != nil {
+		return workspace.Worktree{}, err
+	}
+	stdout, stderr, err := a.run(ctx, "-C", path, "rev-parse", "--show-toplevel")
+	if err != nil {
+		return workspace.Worktree{}, classifyGitError(stderr, err)
+	}
+	actualRoot, err := workspace.CanonicalRoot(strings.TrimSpace(string(stdout)))
+	if err != nil || !samePath(actualRoot, path) {
+		return workspace.Worktree{}, errInvalidRepository
+	}
+	branch, err := a.currentBranch(ctx, path)
+	if err != nil {
+		return workspace.Worktree{}, err
+	}
+	head, stderr, err := a.run(ctx, "-C", path, "rev-parse", "HEAD")
+	if err != nil {
+		return workspace.Worktree{}, classifyGitError(stderr, err)
+	}
+	status, stderr, err := a.run(ctx, "-C", path, "status", "--porcelain=v1", "--untracked-files=all")
+	if err != nil {
+		return workspace.Worktree{}, classifyGitError(stderr, err)
+	}
+	worktree.Path = actualRoot
+	worktree.Branch = branch
+	worktree.Revision = strings.TrimSpace(string(head))
+	worktree.Dirty = strings.TrimSpace(string(status)) != ""
+	worktree.UpdatedAt = time.Now().UTC()
+	if worktree.Status == "" {
+		worktree.Status = workspace.WorktreeStatusActive
+	}
+	return worktree, nil
+}
+
+func (a *Adapter) approvedTarget(projectID workspace.ProjectID, target string) (string, error) {
+	if a.worktreeRoot == "" {
+		return "", workspace.NewError(workspace.ErrInvalidRequest, "worktree root is not configured")
+	}
+	projectRoot, err := workspace.ContainedPath(a.worktreeRoot, string(projectID))
+	if err != nil {
+		return "", err
+	}
+	canonicalTarget, err := workspace.CanonicalRoot(target)
+	if err != nil {
+		return "", err
+	}
+	relative, err := filepath.Rel(projectRoot, canonicalTarget)
+	if err != nil || relative == "." || filepath.IsAbs(relative) || strings.HasPrefix(relative, ".."+string(filepath.Separator)) || relative == ".." {
+		return "", workspace.NewError(workspace.ErrPathDenied, "worktree path is outside the approved worktree root")
+	}
+	return canonicalTarget, nil
+}
+
+func (a *Adapter) remember(worktree workspace.Worktree) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.worktrees[worktree.ID] = worktree
+	a.worktreeByPath[filepath.Clean(worktree.Path)] = worktree.ID
+}
+
+func (a *Adapter) idForPath(path string) workspace.WorktreeID {
+	cleanPath := filepath.Clean(path)
+	a.mu.RLock()
+	if id, ok := a.worktreeByPath[cleanPath]; ok {
+		a.mu.RUnlock()
+		return id
+	}
+	a.mu.RUnlock()
+	hash := sha256.Sum256([]byte(strings.ToLower(cleanPath)))
+	return workspace.WorktreeID("wt-" + hex.EncodeToString(hash[:8]))
+}
+
+func parseWorktreeList(output string) []struct {
+	Path     string
+	Revision string
+	Branch   string
+} {
+	var result []struct {
+		Path     string
+		Revision string
+		Branch   string
+	}
+	var current *struct {
+		Path     string
+		Revision string
+		Branch   string
+	}
+	flush := func() {
+		if current != nil && current.Path != "" {
+			result = append(result, *current)
+		}
+		current = nil
+	}
+	for _, line := range strings.Split(output, "\n") {
+		line = strings.TrimSuffix(line, "\r")
+		switch {
+		case strings.HasPrefix(line, "worktree "):
+			flush()
+			current = &struct {
+				Path     string
+				Revision string
+				Branch   string
+			}{Path: strings.TrimSpace(strings.TrimPrefix(line, "worktree "))}
+		case current != nil && strings.HasPrefix(line, "HEAD "):
+			current.Revision = strings.TrimSpace(strings.TrimPrefix(line, "HEAD "))
+		case current != nil && strings.HasPrefix(line, "branch "):
+			current.Branch = strings.TrimPrefix(line, "branch refs/heads/")
+		}
+	}
+	flush()
+	return result
+}
+
+func requireContext(ctx context.Context) error {
+	if ctx == nil {
+		return workspace.NewError(workspace.ErrInvalidRequest, "context is required")
+	}
+	if err := ctx.Err(); err != nil {
+		return workspace.CanceledError(err)
+	}
+	return nil
 }
