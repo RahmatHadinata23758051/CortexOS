@@ -15,15 +15,17 @@ export type RuntimeBridge = {
   GetRuntimeSnapshot(request: SnapshotRequest): Promise<RuntimeSnapshot>
 }
 
-type WailsWindow = Window & {
+export * from './workspace'
+
+export type WailsWindow = Window & {
   go?: {
     platform?: {
-      Bridge?: RuntimeBridge
+      Bridge?: RuntimeBridge & WorkspaceBridge
     }
   }
 }
 
-function getWailsBridge(): RuntimeBridge {
+function getWailsBridge(): RuntimeBridge & WorkspaceBridge {
   const bridge = (window as WailsWindow).go?.platform?.Bridge
   if (!bridge) {
     throw new Error('CortexOS runtime bridge is unavailable')
@@ -31,8 +33,12 @@ function getWailsBridge(): RuntimeBridge {
   return bridge
 }
 
-export const wailsRuntimeBridge: RuntimeBridge = {
+export const wailsRuntimeBridge: RuntimeBridge & WorkspaceBridge = {
   GetRuntimeSnapshot: (request) => getWailsBridge().GetRuntimeSnapshot(request),
+  GetWorkspaceSnapshot: (request) => getWailsBridge().GetWorkspaceSnapshot(request),
+  QueryWorkspace: (request) => getWailsBridge().QueryWorkspace(request),
+  RebuildWorkspaceRetrieval: (request) => getWailsBridge().RebuildWorkspaceRetrieval(request),
+  RegisterWorkspaceProject: (request) => getWailsBridge().RegisterWorkspaceProject(request),
 }
 
 export async function getRuntimeSnapshot(

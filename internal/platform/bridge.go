@@ -20,3 +20,19 @@ func NewBridge(service *application.Service) *Bridge {
 func (b *Bridge) GetRuntimeSnapshot(request application.SnapshotRequest) (application.RuntimeSnapshot, error) {
 	return b.service.GetRuntimeSnapshot(context.Background(), request)
 }
+
+func (b *Bridge) GetWorkspaceSnapshot(request application.WorkspaceSnapshotRequest) (application.WorkspaceSnapshot, error) {
+	return b.service.GetWorkspaceSnapshot(context.Background(), request)
+}
+
+func (b *Bridge) QueryWorkspace(request application.WorkspaceNoteQueryRequest) ([]application.WorkspaceNoteResult, error) {
+	return b.service.QueryWorkspace(context.Background(), request)
+}
+
+func (b *Bridge) RebuildWorkspaceRetrieval(request application.WorkspaceMutationRequest) error {
+	return b.service.RebuildWorkspaceRetrieval(context.Background(), request)
+}
+
+func (b *Bridge) RegisterWorkspaceProject(request application.WorkspaceProjectRequest) (application.WorkspaceProject, error) {
+	return b.service.RegisterWorkspaceProject(context.Background(), request)
+}

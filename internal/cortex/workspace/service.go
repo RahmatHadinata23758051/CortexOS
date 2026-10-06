@@ -156,6 +156,26 @@ func (s *Service) DeleteNote(ctx context.Context, id NoteID) error {
 	return s.dependencies.Vault.DeleteNote(ctx, id)
 }
 
+func (s *Service) QueryRetrieval(ctx context.Context, projectID ProjectID, query string, limit int) ([]RetrievalDocument, error) {
+	if err := requireServiceContext(ctx); err != nil {
+		return nil, err
+	}
+	if s.dependencies.Retrieval == nil {
+		return nil, NewError(ErrInvalidRequest, "workspace retrieval index is unavailable")
+	}
+	return s.dependencies.Retrieval.Query(ctx, projectID, query, limit)
+}
+
+func (s *Service) RebuildRetrieval(ctx context.Context, projectID ProjectID) error {
+	if err := requireServiceContext(ctx); err != nil {
+		return err
+	}
+	if s.dependencies.Retrieval == nil {
+		return NewError(ErrInvalidRequest, "workspace retrieval index is unavailable")
+	}
+	return s.dependencies.Retrieval.Rebuild(ctx, projectID)
+}
+
 func (s *Service) Snapshot(ctx context.Context) (WorkspaceSnapshot, error) {
 	if err := requireServiceContext(ctx); err != nil {
 		return WorkspaceSnapshot{}, err
