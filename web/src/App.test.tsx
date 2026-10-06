@@ -4,7 +4,10 @@ import { describe, expect, it } from 'vitest'
 import { App } from './App'
 
 describe('App', () => {
-  it('renders the runtime foundation shell', () => {
-    expect(renderToStaticMarkup(<App />)).toContain('Runtime foundation')
+  it('renders the workspace cockpit shell', () => {
+    const markup = renderToStaticMarkup(<App />)
+    expect(markup).toContain('Keep the ground')
+    expect(markup).toContain('Register a project')
+    expect(markup).toContain('Repository root')
   })
 })

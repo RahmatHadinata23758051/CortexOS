@@ -145,6 +145,9 @@ func (s *Service) QueryWorkspace(ctx context.Context, request WorkspaceNoteQuery
 	if err := validateWorkspaceSchema(request.SchemaVersion); err != nil {
 		return nil, err
 	}
+	if request.ProjectID == "" || request.Limit < 1 || request.Limit > 100 {
+		return nil, &WorkspaceBridgeError{Code: string(workspace.ErrInvalidRequest), Message: "project and query limit are invalid"}
+	}
 	if s == nil || s.workspace == nil {
 		return nil, &WorkspaceBridgeError{Code: string(workspace.ErrStorageUnavailable), Message: "workspace service is unavailable"}
 	}
@@ -184,6 +187,9 @@ func (s *Service) RegisterWorkspaceProject(ctx context.Context, request Workspac
 	if s == nil || s.workspace == nil {
 		return WorkspaceProject{}, &WorkspaceBridgeError{Code: string(workspace.ErrStorageUnavailable), Message: "workspace service is unavailable"}
 	}
+	if err := validateWorkspaceProjectRequest(request); err != nil {
+		return WorkspaceProject{}, &WorkspaceBridgeError{Code: string(workspace.ErrInvalidRequest), Message: err.Error()}
+	}
 	project, err := s.workspace.RegisterProject(ctx, workspace.Project{
 		ID: workspace.ProjectID(request.ID), Name: request.Name, RepositoryRoot: request.RepositoryRoot,
 		VaultRoot: request.VaultRoot, DefaultBranch: request.DefaultBranch,
@@ -197,6 +203,19 @@ func (s *Service) RegisterWorkspaceProject(ctx context.Context, request Workspac
 func validateWorkspaceSchema(version string) error {
 	if version != WorkspaceSchemaVersion {
 		return &WorkspaceBridgeError{Code: string(workspace.ErrUnsupportedVersion), Message: "workspace contract version is unsupported"}
+	}
+	return nil
+}
+
+func validateWorkspaceProjectRequest(request WorkspaceProjectRequest) error {
+	if request.ID == "" || request.Name == "" || request.RepositoryRoot == "" || request.VaultRoot == "" {
+		return fmt.Errorf("project id, name, repository root, and Vault root are required")
+	}
+	if _, err := workspace.CanonicalRoot(request.RepositoryRoot); err != nil {
+		return fmt.Errorf("repository root is invalid")
+	}
+	if _, err := workspace.CanonicalRoot(request.VaultRoot); err != nil {
+		return fmt.Errorf("Vault root is invalid")
 	}
 	return nil
 }
