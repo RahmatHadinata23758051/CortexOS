@@ -218,6 +218,7 @@ exports/
 !internal/
 !cmd/
 !configs/
+!configs/*.example.*
 !_harvest/
 !_harvest/extracted/
 !_harvest/extracted/ATTRIBUTION-REVIEW.md

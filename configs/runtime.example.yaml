@@ -1,0 +1,10 @@
+# CortexOS safe runtime configuration example.
+# This file contains names and non-sensitive defaults only.
+# Real credentials belong in the OS keychain or an approved secret manager.
+
+environment: local
+log_level: info
+provider_default: disabled
+provider_key_ref: null
+user_key_ref: null
+linear_mcp_enabled: false
