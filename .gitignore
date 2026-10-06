@@ -49,6 +49,11 @@ $RECYCLE.BIN/
 .mcp.json
 !.mcp.json.example
 
+# Private project-agent instructions and local OpenCode settings stay on the
+# developer machine and are never published to the remote repository.
+RULES.md
+opencode.json
+
 # Local application state and credentials.
 .cortexos/
 .cortexos-*/
@@ -208,8 +213,6 @@ exports/
 # Explicitly keep important project files trackable
 # ------------------------------------------------------------------------------
 !.gitignore
-!RULES.md
-!opencode.json
 !docs/
 !discuss/
 !scripts/
