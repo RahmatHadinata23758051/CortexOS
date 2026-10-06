@@ -206,23 +206,24 @@ func (i *Index) RebuildFrom(ctx context.Context, projectID workspace.ProjectID, 
 func (i *Index) replace(ctx context.Context, projectID workspace.ProjectID, documents []workspace.RetrievalDocument) error {
 	i.mu.Lock()
 	defer i.mu.Unlock()
-	if documents == nil {
-		if err := i.loadLocked(); err != nil {
+	if err := i.loadLocked(); err != nil {
+		if workspace.ErrorCodeOf(err) != workspace.ErrRetrievalCorrupt {
 			return err
 		}
-		kept := make([]workspace.RetrievalDocument, 0, len(i.data.Documents))
-		for _, document := range i.data.Documents {
-			if document.ProjectID != projectID {
-				kept = append(kept, document)
-			}
-		}
-		documents = kept
+		i.data = persisted{Version: IndexVersion, Documents: []workspace.RetrievalDocument{}}
 	}
+	kept := make([]workspace.RetrievalDocument, 0, len(i.data.Documents)+len(documents))
+	for _, document := range i.data.Documents {
+		if document.ProjectID != projectID {
+			kept = append(kept, document)
+		}
+	}
+	kept = append(kept, documents...)
 	if err := checkContext(ctx); err != nil {
 		return err
 	}
-	sortDocuments(documents)
-	i.data = persisted{Version: IndexVersion, Documents: documents}
+	sortDocuments(kept)
+	i.data = persisted{Version: IndexVersion, Documents: kept}
 	return i.persistLocked(ctx)
 }
 
