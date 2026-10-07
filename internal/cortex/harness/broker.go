@@ -4,39 +4,175 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sort"
 	"sync"
 	"time"
 )
 
+// CapabilityBinding associates a ToolCapability with a policy binding and constraints.
+type CapabilityBinding struct {
+	Capability    ToolCapability `json:"capability"`
+	Description   string         `json:"description,omitempty"`
+	RequiresAsk   bool           `json:"requiresAsk,omitempty"`
+	DefaultEffect Effect         `json:"defaultEffect,omitempty"`
+}
+
+// Approval records explicit authorization for a pending ask decision.
+type Approval struct {
+	ExecutionID string    `json:"executionId"`
+	ToolName    string    `json:"toolName,omitempty"`
+	Action      string    `json:"action,omitempty"`
+	Approver    string    `json:"approver"`
+	Reason      string    `json:"reason,omitempty"`
+	GrantedAt   time.Time `json:"grantedAt"`
+}
+
+type approvalKey struct{}
+
+// WithApproval attaches an explicit approval to a context.
+func WithApproval(ctx context.Context, approval Approval) context.Context {
+	return context.WithValue(ctx, approvalKey{}, approval)
+}
+
+// DefaultCapabilities returns the set of standard harness tool capabilities.
+func DefaultCapabilities() []CapabilityBinding {
+	return []CapabilityBinding{
+		{Capability: CapabilityShell, Description: "Execute commands in isolated worktree"},
+		{Capability: CapabilityFileRead, Description: "Read files within worktree boundary"},
+		{Capability: CapabilityFileWrite, Description: "Write files within worktree boundary"},
+		{Capability: CapabilityFileEdit, Description: "Edit files within worktree boundary"},
+		{Capability: CapabilityGit, Description: "Execute git operations on worktree"},
+		{Capability: CapabilitySearch, Description: "Search content within worktree"},
+		{Capability: CapabilityTaskPlan, Description: "Task and plan coordination"},
+		{Capability: CapabilityCodeNavigation, Description: "Navigate symbols and references"},
+		{Capability: CapabilityTestRun, Description: "Run tests in isolated sandbox"},
+		{Capability: CapabilityLint, Description: "Run linters in isolated sandbox"},
+		{Capability: CapabilityBuild, Description: "Run build commands in isolated sandbox"},
+	}
+}
+
 // Broker is the default implementation of ToolBroker.
-// It manages tool registration, policy checks, engine routing, and execution with evidence collection.
+// It acts as the mandatory execution gate: policy enforcement, engine routing,
+// sandboxing, and immutable audit evidence collection. No direct process execution
+// occurs outside the broker.
 type Broker struct {
 	mu           sync.RWMutex
 	tools        map[string]ToolDefinition
+	capabilities map[ToolCapability]CapabilityBinding
 	engines      map[ToolKind]EngineAdapter // Legacy: single engine per kind
-	router       *BasicRouter               // New: capability-based routing
+	router       *BasicRouter               // Capability-based routing
 	policyEngine PolicyEngine
 	clock        func() time.Time
+	auditLog     []EvidenceRecord
+	approvals    map[string]Approval
 }
 
 // NewBroker creates a new tool broker with the given policy engine.
 func NewBroker(policyEngine PolicyEngine) *Broker {
-	return &Broker{
+	b := &Broker{
 		tools:        make(map[string]ToolDefinition),
+		capabilities: make(map[ToolCapability]CapabilityBinding),
 		engines:      make(map[ToolKind]EngineAdapter),
 		router:       NewBasicRouter(DefaultRoutingPolicy()),
 		policyEngine: policyEngine,
 		clock:        time.Now,
+		approvals:    make(map[string]Approval),
 	}
+	for _, capBinding := range DefaultCapabilities() {
+		b.capabilities[capBinding.Capability] = capBinding
+	}
+	return b
+}
+
+// RegisterCapability registers or updates a capability binding.
+func (b *Broker) RegisterCapability(binding CapabilityBinding) error {
+	if binding.Capability == "" {
+		return fmt.Errorf("%w: capability name is required", ErrInvalidContract)
+	}
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.capabilities[binding.Capability] = binding
+	return nil
+}
+
+// Capability retrieves a registered capability binding by name.
+func (b *Broker) Capability(cap ToolCapability) (CapabilityBinding, bool) {
+	b.mu.RLock()
+	defer b.mu.RUnlock()
+	binding, ok := b.capabilities[cap]
+	return binding, ok
+}
+
+// ListCapabilities returns all registered capability bindings.
+func (b *Broker) ListCapabilities() []CapabilityBinding {
+	b.mu.RLock()
+	defer b.mu.RUnlock()
+	out := make([]CapabilityBinding, 0, len(b.capabilities))
+	for _, binding := range b.capabilities {
+		out = append(out, binding)
+	}
+	sort.Slice(out, func(i, j int) bool { return string(out[i].Capability) < string(out[j].Capability) })
+	return out
+}
+
+// Approve registers an explicit approval on the broker for a specific execution ID.
+func (b *Broker) Approve(approval Approval) error {
+	if approval.ExecutionID == "" {
+		return fmt.Errorf("%w: executionId is required for approval", ErrInvalidContract)
+	}
+	if approval.Approver == "" {
+		return fmt.Errorf("%w: approver is required for approval", ErrInvalidContract)
+	}
+	if approval.GrantedAt.IsZero() {
+		approval.GrantedAt = b.clock()
+	}
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.approvals[approval.ExecutionID] = approval
+	return nil
+}
+
+// AuditEvents returns a copy of all immutable audit events collected by the broker.
+func (b *Broker) AuditEvents() []EvidenceRecord {
+	b.mu.RLock()
+	defer b.mu.RUnlock()
+	out := make([]EvidenceRecord, len(b.auditLog))
+	copy(out, b.auditLog)
+	return out
+}
+
+// AuditEventsForExecution returns immutable audit events for a specific execution ID.
+func (b *Broker) AuditEventsForExecution(executionID string) []EvidenceRecord {
+	b.mu.RLock()
+	defer b.mu.RUnlock()
+	var out []EvidenceRecord
+	for _, ev := range b.auditLog {
+		if ev.ExecutionID == executionID {
+			out = append(out, ev)
+		}
+	}
+	return out
 }
 
 // Register implements ToolBroker.Register.
+// Validates tool definition and binds declared capabilities to the broker's capability registry.
+// Fails closed if any declared capability is unknown or unregistered.
 func (b *Broker) Register(def ToolDefinition) error {
 	if err := def.Validate(); err != nil {
 		return fmt.Errorf("%w: %v", ErrInvalidContract, err)
 	}
 	b.mu.Lock()
 	defer b.mu.Unlock()
+
+	for _, cap := range def.Capabilities {
+		if cap == "" {
+			return fmt.Errorf("%w: empty capability in tool definition", ErrInvalidContract)
+		}
+		if _, exists := b.capabilities[cap]; !exists {
+			return fmt.Errorf("%w: unregistered capability %q", ErrInvalidContract, cap)
+		}
+	}
+
 	if _, exists := b.tools[def.Name]; exists {
 		return fmt.Errorf("%w: %q", ErrDuplicateTool, def.Name)
 	}
@@ -121,13 +257,15 @@ func (b *Broker) Engine(kind ToolKind) (EngineAdapter, bool) {
 	return e, ok
 }
 
-// Execute implements ToolBroker.Execute.
-// It checks policy, selects the engine, executes with timeout/cancellation,
-// and returns a ToolResult with collected evidence.
+// Execute implements ToolBroker.Execute as the mandatory execution gate.
+// It validates requests, enforces capability and policy constraints (fail-closed),
+// routes to registered engine adapters, and collects immutable audit evidence.
 // The result is UNTRUSTED EVIDENCE; Inspector/Orchestra is the sole success authority.
 func (b *Broker) Execute(ctx ExecutionContext, request ToolRequest) (ToolResult, error) {
 	if err := request.Validate(); err != nil {
-		return ToolResult{}, ErrorFor(err)
+		coded := ErrorFor(err)
+		evID := b.recordAudit(request, EvidenceKindPolicyDecision, "denied", "malformed request", nil, coded)
+		return brokerFailureResult(request, ToolStatusFailed, coded, evID), coded
 	}
 	if ctx == nil {
 		ctx = NewExecutionContext(context.Background(), request.TraceID)
@@ -138,49 +276,126 @@ func (b *Broker) Execute(ctx ExecutionContext, request ToolRequest) (ToolResult,
 	def, ok := b.tools[request.ToolName]
 	b.mu.RUnlock()
 	if !ok {
-		return ToolResult{}, ErrorFor(fmt.Errorf("%w: %q", ErrToolNotFound, request.ToolName))
+		err := fmt.Errorf("%w: %q", ErrToolNotFound, request.ToolName)
+		coded := ErrorFor(err)
+		evID := b.recordAudit(request, EvidenceKindPolicyDecision, "denied", "unknown tool", nil, coded)
+		return brokerFailureResult(request, ToolStatusFailed, coded, evID), coded
 	}
+
+	// Validate requested action against declared capabilities (bypass prevention)
+	var targetCap ToolCapability
+	if request.Action != "" {
+		targetCap = ToolCapability(request.Action)
+		b.mu.RLock()
+		_, capExists := b.capabilities[targetCap]
+		b.mu.RUnlock()
+		if !capExists {
+			err := fmt.Errorf("%w: invalid capability %q", ErrInvalidContract, targetCap)
+			coded := ErrorFor(err)
+			evID := b.recordAudit(request, EvidenceKindPolicyDecision, "denied", "invalid capability", nil, coded)
+			return brokerFailureResult(request, ToolStatusPolicyDenied, coded, evID), coded
+		}
+
+		toolHasCap := false
+		for _, c := range def.Capabilities {
+			if c == targetCap {
+				toolHasCap = true
+				break
+			}
+		}
+		if !toolHasCap {
+			err := fmt.Errorf("%w: tool %q does not provide capability %q", ErrPolicyDenied, def.Name, targetCap)
+			coded := ErrorFor(err)
+			evID := b.recordAudit(request, EvidenceKindPolicyDecision, "denied", "capability bypass attempt: undeclared capability", nil, coded)
+			return brokerFailureResult(request, ToolStatusPolicyDenied, coded, evID), coded
+		}
+	} else {
+		targetCap = def.Capabilities[0]
+	}
+
+	// Look up capability binding
+	b.mu.RLock()
+	capBinding := b.capabilities[targetCap]
+	b.mu.RUnlock()
 
 	// Evaluate policy
 	if b.policyEngine == nil {
-		return ToolResult{}, ErrorFor(fmt.Errorf("%w: policy engine is not configured", ErrPolicyDenied))
+		err := fmt.Errorf("%w: policy engine is not configured", ErrPolicyDenied)
+		coded := ErrorFor(err)
+		evID := b.recordAudit(request, EvidenceKindPolicyDecision, "denied", "policy engine not configured", nil, coded)
+		return brokerFailureResult(request, ToolStatusPolicyDenied, coded, evID), coded
 	}
-	action := def.Capabilities[0].String()
-	if request.Action != "" {
-		action = request.Action
-	}
+
+	action := targetCap.String()
 	resource := request.WorktreeID
 	if request.Resource != "" {
 		resource = request.Resource
 	}
+
 	decision, err := b.policyEngine.Evaluate(PolicyRequest{
 		Action:   action,
 		Resource: resource,
 		ToolName: request.ToolName,
 	})
 	if err != nil {
-		return ToolResult{}, ErrorFor(err)
+		coded := ErrorFor(err)
+		evID := b.recordAudit(request, EvidenceKindPolicyDecision, "denied", "policy evaluation error", nil, coded)
+		return brokerFailureResult(request, ToolStatusPolicyDenied, coded, evID), coded
 	}
+
+	// Apply capability binding default if policy did not match an explicit rule
+	if decision.RuleID == "" && capBinding.DefaultEffect != "" {
+		decision.Effect = capBinding.DefaultEffect
+		decision.Allowed = capBinding.DefaultEffect == EffectAllow
+		decision.RequiresAsk = capBinding.DefaultEffect == EffectAsk
+		decision.Reason = "capability default policy binding"
+	}
+
+	// Tool-level or capability-level requiresAsk takes precedence over allow (no silent allow)
+	if (def.RequiresAsk || capBinding.RequiresAsk) && decision.Allowed {
+		decision.Allowed = false
+		decision.RequiresAsk = true
+		decision.Effect = EffectAsk
+		decision.Reason = "tool capability requires explicit approval"
+	}
+
+	// Policy allow/ask/deny enforcement
 	if !decision.Allowed {
 		if decision.RequiresAsk {
-			return ToolResult{}, ErrorFor(ErrPolicyAsk)
+			// Explicit ask approval boundary
+			approval, approved := b.checkApproval(ctx, request.ExecutionID, request.ToolName, action)
+			if !approved {
+				coded := ErrorFor(ErrPolicyAsk)
+				evID := b.recordAudit(request, EvidenceKindPolicyDecision, "denied", "policy requires approval; no explicit approval grant", &decision, coded)
+				return brokerFailureResult(request, ToolStatusPolicyDenied, coded, evID), coded
+			}
+			decision.Allowed = true
+			decision.RequiresAsk = false
+			decision.Effect = EffectAllow
+			decision.Reason = fmt.Sprintf("approved by %s", approval.Approver)
+			b.recordAudit(request, EvidenceKindPolicyDecision, "approved", "explicit approval granted at boundary", &decision, nil)
+		} else {
+			coded := ErrorFor(ErrPolicyDenied)
+			evID := b.recordAudit(request, EvidenceKindPolicyDecision, "denied", "policy denied", &decision, coded)
+			return brokerFailureResult(request, ToolStatusPolicyDenied, coded, evID), coded
 		}
-		return ToolResult{}, ErrorFor(ErrPolicyDenied)
+	} else {
+		b.recordAudit(request, EvidenceKindPolicyDecision, "approved", "policy allowed", &decision, nil)
 	}
 
 	// Select engine via capability-based router
 	selection, err := b.router.Find(ctx, def.Capabilities)
 	if err != nil {
-		// Preserve the broker's legacy unavailable-engine contract while the
-		// router exposes more precise typed failures to direct callers.
 		if errors.Is(err, ErrNoEligibleAdapter) {
-			return ToolResult{}, ErrorFor(fmt.Errorf("%w: no adapter for tool kind %q", ErrAdapterFailure, def.Kind))
+			err = fmt.Errorf("%w: no adapter for tool kind %q", ErrAdapterFailure, def.Kind)
 		}
-		return ToolResult{}, ErrorFor(err)
+		coded := ErrorFor(err)
+		evID := b.recordAudit(request, EvidenceKindCommandExecution, "failed", "no eligible adapter", &decision, coded)
+		return brokerFailureResult(request, ToolStatusAdapterError, coded, evID), coded
 	}
 	engine := selection.Adapter
 
-	// Build envelope
+	// Build envelope with deterministic matched-rule metadata (no secrets)
 	envelope := ExecutionEnvelope{
 		ContractVersion: HarnessContractVersion,
 		ExecutionID:     request.ExecutionID,
@@ -191,6 +406,7 @@ func (b *Broker) Execute(ctx ExecutionContext, request ToolRequest) (ToolResult,
 		PolicyDecision:  decision,
 		Timeout:         request.Timeout,
 		Audit: AuditMetadata{
+			Actor:         request.Audit.Actor,
 			Adapter:       selection.Descriptor.Identity.Name,
 			PolicyRuleID:  decision.RuleID,
 			TraceID:       request.TraceID,
@@ -210,13 +426,27 @@ func (b *Broker) Execute(ctx ExecutionContext, request ToolRequest) (ToolResult,
 
 	if execErr != nil {
 		coded := ErrorFor(execErr)
+		status := toolStatusFromError(coded)
+		var evID string
+		if status == ToolStatusCanceled || status == ToolStatusTimeout {
+			evID = b.recordAudit(request, EvidenceKindCommandExecution, "canceled", coded.Message, &decision, coded)
+		} else {
+			evID = b.recordAudit(request, EvidenceKindCommandExecution, "failed", coded.Message, &decision, coded)
+		}
+		var evidenceIDs []string
+		if len(result.EvidenceIDs) > 0 {
+			evidenceIDs = result.EvidenceIDs
+		} else if evID != "" {
+			evidenceIDs = []string{evID}
+		}
 		result = ToolResult{
 			ContractVersion: HarnessContractVersion,
 			ExecutionID:     request.ExecutionID,
 			TaskID:          request.TaskID,
 			ToolName:        request.ToolName,
-			Status:          toolStatusFromError(coded),
+			Status:          status,
 			Error:           &ToolError{Code: string(coded.Code), Message: coded.Message},
+			EvidenceIDs:     evidenceIDs,
 			StartedAt:       startedAt,
 			CompletedAt:     completedAt,
 			DurationMs:      completedAt.Sub(startedAt).Milliseconds(),
@@ -225,7 +455,7 @@ func (b *Broker) Execute(ctx ExecutionContext, request ToolRequest) (ToolResult,
 		return result, coded
 	}
 
-	// Enforce contract version on result
+	// Enforce contract version and redaction on result
 	if result.ContractVersion != HarnessContractVersion {
 		result.ContractVersion = HarnessContractVersion
 	}
@@ -234,15 +464,115 @@ func (b *Broker) Execute(ctx ExecutionContext, request ToolRequest) (ToolResult,
 	result.DurationMs = completedAt.Sub(startedAt).Milliseconds()
 	result.Redacted = true
 
+	evID := b.recordAudit(request, EvidenceKindCommandExecution, "completed", "tool execution successful", &decision, nil)
+	if len(result.EvidenceIDs) == 0 && evID != "" {
+		result.EvidenceIDs = []string{evID}
+	}
 	return result, nil
 }
 
 // Policy implements ToolBroker.Policy.
 func (b *Broker) Policy() PolicyEngine { return b.policyEngine }
 
+func (b *Broker) checkApproval(ctx context.Context, executionID, toolName, action string) (Approval, bool) {
+	if ctx != nil {
+		if val := ctx.Value(approvalKey{}); val != nil {
+			if app, ok := val.(Approval); ok {
+				if app.ExecutionID == "" || app.ExecutionID == executionID {
+					if app.ToolName == "" || app.ToolName == toolName {
+						if app.Action == "" || app.Action == action {
+							return app, true
+						}
+					}
+				}
+			}
+		}
+	}
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	app, ok := b.approvals[executionID]
+	if ok {
+		if (app.ToolName == "" || app.ToolName == toolName) && (app.Action == "" || app.Action == action) {
+			delete(b.approvals, executionID)
+			return app, true
+		}
+	}
+	return Approval{}, false
+}
+
+func brokerFailureResult(request ToolRequest, status ToolStatus, coded *CodedError, evidenceID string) ToolResult {
+	result := ToolResult{
+		ContractVersion: HarnessContractVersion,
+		ExecutionID:     request.ExecutionID,
+		TaskID:          request.TaskID,
+		ToolName:        request.ToolName,
+		Status:          status,
+		Error:           &ToolError{Code: string(coded.Code), Message: coded.Message},
+		Redacted:        true,
+	}
+	if evidenceID != "" {
+		result.EvidenceIDs = []string{evidenceID}
+	}
+	return result
+}
+
+func (b *Broker) recordAudit(req ToolRequest, kind EvidenceKind, event string, reason string, decision *PolicyDecision, coded *CodedError) string {
+	execID := req.ExecutionID
+	if execID == "" {
+		execID = "exec-unknown"
+	}
+	taskID := req.TaskID
+	if taskID == "" {
+		taskID = "task-unknown"
+	}
+	worktreeID := req.WorktreeID
+	if worktreeID == "" {
+		worktreeID = "wt-unknown"
+	}
+
+	payload := map[string]any{
+		"event":       event,
+		"reason":      reason,
+		"toolName":    req.ToolName,
+		"action":      req.Action,
+		"traceId":     req.TraceID,
+		"executionId": req.ExecutionID,
+		"taskId":      req.TaskID,
+		"worktreeId":  req.WorktreeID,
+	}
+	ruleID := ""
+	if decision != nil {
+		ruleID = decision.RuleID
+		payload["ruleId"] = decision.RuleID
+		payload["effect"] = string(decision.Effect)
+		payload["policyReason"] = decision.Reason
+	}
+	if coded != nil {
+		payload["errorCode"] = string(coded.Code)
+		payload["errorMessage"] = coded.Message
+	}
+
+	record, err := NewEvidenceRecord(execID, taskID, worktreeID, kind, payload)
+	if err != nil {
+		return ""
+	}
+	record.Audit = AuditMetadata{
+		Actor:        req.Audit.Actor,
+		PolicyRuleID: ruleID,
+		TraceID:      req.TraceID,
+	}
+
+	b.mu.Lock()
+	b.auditLog = append(b.auditLog, record)
+	b.mu.Unlock()
+	return record.ID
+}
+
 func toolStatusFromError(e *CodedError) ToolStatus {
 	switch e.Code {
 	case ErrorCodePolicyDenied:
+		return ToolStatusPolicyDenied
+	case ErrorCodePolicyAsk:
 		return ToolStatusPolicyDenied
 	case ErrorCodeTimeout:
 		return ToolStatusTimeout
@@ -262,6 +592,8 @@ type contextWithTrace struct {
 	context.Context
 	traceID string
 }
+
+func (c *contextWithTrace) TraceID() string { return c.traceID }
 
 // CancellationPolicy defines how the broker handles cancellation.
 type CancellationPolicy struct {
