@@ -48,6 +48,13 @@ func DefaultCapabilities() []CapabilityBinding {
 		{Capability: CapabilityTestRun, Description: "Run tests in isolated sandbox"},
 		{Capability: CapabilityLint, Description: "Run linters in isolated sandbox"},
 		{Capability: CapabilityBuild, Description: "Run build commands in isolated sandbox"},
+		{Capability: CapabilityCoding, Description: "Code generation and modification"},
+		{Capability: CapabilityAnalysis, Description: "Code analysis and understanding"},
+		{Capability: CapabilityRefactor, Description: "Code refactoring and restructuring"},
+		{Capability: CapabilityDebug, Description: "Bug diagnosis and fixing"},
+		{Capability: CapabilityReview, Description: "Code review and quality audit"},
+		{Capability: CapabilityTestGen, Description: "Automated test generation"},
+		{Capability: CapabilityDocGen, Description: "Documentation generation"},
 	}
 }
 
@@ -579,6 +586,8 @@ func toolStatusFromError(e *CodedError) ToolStatus {
 	case ErrorCodeCanceled:
 		return ToolStatusCanceled
 	case ErrorCodeSandbox:
+		return ToolStatusSandboxError
+	case ErrorCodeWorktreeViolation:
 		return ToolStatusSandboxError
 	case ErrorCodeAdapterFailure:
 		return ToolStatusAdapterError

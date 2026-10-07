@@ -36,6 +36,13 @@ const (
 	CapabilityTestRun        ToolCapability = "test_run"
 	CapabilityLint           ToolCapability = "lint"
 	CapabilityBuild          ToolCapability = "build"
+	CapabilityCoding         ToolCapability = "coding"
+	CapabilityAnalysis       ToolCapability = "analysis"
+	CapabilityRefactor       ToolCapability = "refactor"
+	CapabilityDebug          ToolCapability = "debug"
+	CapabilityReview         ToolCapability = "review"
+	CapabilityTestGen        ToolCapability = "test_gen"
+	CapabilityDocGen         ToolCapability = "doc_gen"
 )
 
 // ToolDefinition describes a registerable tool.
