@@ -43,6 +43,7 @@ const (
 	ErrorCodePolicyDeniedEngine  ErrorCode = "harness.policy_denied_engine"
 	ErrorCodeAdapterUnhealthy    ErrorCode = "harness.adapter_unhealthy"
 	ErrorCodeVersionIncompatible ErrorCode = "harness.version_incompatible"
+	ErrorCodeNativeUnsupported   ErrorCode = "harness.native_unsupported"
 )
 
 // CodedError is the typed, redacted error returned by the broker.
@@ -110,6 +111,8 @@ func ErrorFor(err error) *CodedError {
 		code, message, retryable = ErrorCodeAdapterUnhealthy, "all eligible adapters unhealthy", true
 	case errors.Is(err, ErrVersionIncompatible):
 		code, message = ErrorCodeVersionIncompatible, "no compatible adapter version available"
+	case errors.Is(err, ErrNativeUnsupportedOperation):
+		code, message = ErrorCodeNativeUnsupported, "native operation is unsupported"
 	}
 	return &CodedError{Code: code, Message: message, Retryable: retryable, Cause: err}
 }
