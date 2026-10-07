@@ -45,9 +45,9 @@ func makeTaskJSON(seq uint64, corr string, toolName string) string {
 	msg, _ := NewMessage(MessageTask, corr, seq, TaskEnvelope{
 		ContractVersion: HarnessContractVersion,
 		ExecutionID:     corr,
-		TaskID:          "task-1",
-		WorktreeID:      "wt-1",
-		ProjectID:       "proj-1",
+		TaskID:          "task-pi-1",
+		WorktreeID:      "wt-pi-1",
+		ProjectID:       "proj-pi-1",
 		ToolName:        toolName,
 		Input:           json.RawMessage(`{"prompt":"write code"}`),
 		TimeoutMs:       5000,

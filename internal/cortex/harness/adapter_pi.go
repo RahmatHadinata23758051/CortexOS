@@ -496,45 +496,56 @@ func (a *PiAdapter) consumeJSONL(envelope ExecutionEnvelope, stdout []byte) (*Te
 			// Health report
 
 		case MessageTask:
-			// Task acknowledgement
+			var task TaskEnvelope
+			if err := json.Unmarshal(msg.Payload, &task); err != nil || task.ExecutionID != envelope.ExecutionID || task.TaskID != envelope.TaskID {
+				return nil, nil, fmt.Errorf("%w: task correlation mismatch", ErrPiProtocolError)
+			}
 
 		case MessageProgress:
 			var p ProgressPayload
-			if err := json.Unmarshal(msg.Payload, &p); err == nil {
-				_, _ = a.sandbox.RecordAudit(envelope, SandboxAuditEvent{
-					Event:   "progress",
-					Command: p.Phase,
-				})
+			if err := json.Unmarshal(msg.Payload, &p); err != nil || p.Validate() != nil {
+				return nil, nil, fmt.Errorf("%w: invalid progress", ErrPiProtocolError)
 			}
+			_, _ = a.sandbox.RecordAudit(envelope, SandboxAuditEvent{
+				Event:   "progress",
+				Command: p.Phase,
+			})
 
 		case MessageEvidence:
 			var ep EvidencePayload
-			if err := json.Unmarshal(msg.Payload, &ep); err == nil {
-				var rec EvidenceRecord
-				if ep.Record != nil {
-					rec = *ep.Record
-				} else {
-					var recErr error
-					rec, recErr = NewEvidenceRecord(envelope.ExecutionID, envelope.TaskID, envelope.WorktreeID, ep.Kind, ep)
-					if recErr != nil {
-						return nil, nil, fmt.Errorf("%w: %v", ErrPiProtocolError, recErr)
-					}
+			if err := json.Unmarshal(msg.Payload, &ep); err != nil || ep.Validate() != nil {
+				return nil, nil, fmt.Errorf("%w: invalid evidence", ErrPiProtocolError)
+			}
+			var rec EvidenceRecord
+			if ep.Record != nil {
+				rec = *ep.Record
+				if rec.ID != ep.EvidenceID || rec.Kind != ep.Kind || rec.Digest != ep.Digest || rec.ExecutionID != envelope.ExecutionID || rec.TaskID != envelope.TaskID || rec.WorktreeID != envelope.WorktreeID {
+					return nil, nil, fmt.Errorf("%w: evidence correlation mismatch", ErrPiProtocolError)
 				}
+			} else {
+				var recErr error
+				rec, recErr = NewEvidenceRecord(envelope.ExecutionID, envelope.TaskID, envelope.WorktreeID, ep.Kind, ep)
+				if recErr != nil {
+					return nil, nil, fmt.Errorf("%w: %v", ErrPiProtocolError, recErr)
+				}
+			}
+			if !containsString(evidenceIDs, rec.ID) {
 				evidenceIDs = append(evidenceIDs, rec.ID)
-				if a.onEvidence != nil {
-					a.onEvidence(rec)
-				}
+			}
+			if a.onEvidence != nil {
+				a.onEvidence(rec)
 			}
 
 		case MessageDiagnostic:
 			var dp DiagnosticPayload
-			if err := json.Unmarshal(msg.Payload, &dp); err == nil {
-				rec, recErr := NewEvidenceRecord(envelope.ExecutionID, envelope.TaskID, envelope.WorktreeID, EvidenceKindEngineDiagnostic, dp)
-				if recErr == nil {
-					evidenceIDs = append(evidenceIDs, rec.ID)
-					if a.onEvidence != nil {
-						a.onEvidence(rec)
-					}
+			if err := json.Unmarshal(msg.Payload, &dp); err != nil || dp.Validate() != nil {
+				return nil, nil, fmt.Errorf("%w: invalid diagnostic", ErrPiProtocolError)
+			}
+			rec, recErr := NewEvidenceRecord(envelope.ExecutionID, envelope.TaskID, envelope.WorktreeID, EvidenceKindEngineDiagnostic, dp)
+			if recErr == nil {
+				evidenceIDs = append(evidenceIDs, rec.ID)
+				if a.onEvidence != nil {
+					a.onEvidence(rec)
 				}
 			}
 
@@ -543,8 +554,8 @@ func (a *PiAdapter) consumeJSONL(envelope ExecutionEnvelope, stdout []byte) (*Te
 
 		case MessageTerminal:
 			var tp TerminalPayload
-			if err := json.Unmarshal(msg.Payload, &tp); err != nil {
-				return nil, nil, fmt.Errorf("%w: invalid terminal payload: %v", ErrPiProtocolError, err)
+			if err := json.Unmarshal(msg.Payload, &tp); err != nil || tp.Validate() != nil {
+				return nil, nil, fmt.Errorf("%w: invalid terminal payload", ErrPiProtocolError)
 			}
 			terminalPayload = &tp
 			for _, id := range tp.EvidenceIDs {
