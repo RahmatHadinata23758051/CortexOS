@@ -21,6 +21,11 @@ const WorkerProtocolVersion = "cortexos.worker.v1"
 // must be applied before decoding untrusted worker output.
 const MaxProtocolLineBytes = 1 << 20 // 1 MiB
 
+// MaxProtocolMessages is the maximum number of JSONL messages a worker may
+// emit in a single session. This prevents unbounded resource consumption from
+// malicious or buggy workers. It is applied at the Decoder level.
+const MaxProtocolMessages = 1024
+
 var (
 	ErrProtocolMalformed      = errors.New("harness: malformed worker protocol message")
 	ErrProtocolLineTooLarge   = errors.New("harness: worker protocol line is too large")
@@ -535,6 +540,7 @@ func (v *Validator) Accept(m Message) error {
 type Decoder struct {
 	scanner   *bufio.Scanner
 	validator *Validator
+	messages  int
 }
 
 func NewDecoder(r io.Reader) *Decoder {
@@ -543,6 +549,9 @@ func NewDecoder(r io.Reader) *Decoder {
 	return &Decoder{scanner: s, validator: NewValidator()}
 }
 func (d *Decoder) Next() (Message, error) {
+	if d.messages >= MaxProtocolMessages {
+		return Message{}, fmt.Errorf("%w: message count exceeds %d", ErrProtocolLineTooLarge, MaxProtocolMessages)
+	}
 	if !d.scanner.Scan() {
 		if err := d.scanner.Err(); err != nil {
 			return Message{}, ErrProtocolLineTooLarge
@@ -556,6 +565,7 @@ func (d *Decoder) Next() (Message, error) {
 	if err := d.validator.Accept(m); err != nil {
 		return Message{}, err
 	}
+	d.messages++
 	return m, nil
 }
 func (d *Decoder) State() ProtocolState { return d.validator.State() }
