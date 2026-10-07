@@ -72,6 +72,7 @@ type Broker struct {
 	clock        func() time.Time
 	auditLog     []EvidenceRecord
 	approvals    map[string]Approval
+	sandbox      *ExecutionSandbox
 }
 
 // NewBroker creates a new tool broker with the given policy engine.
@@ -120,6 +121,20 @@ func (b *Broker) ListCapabilities() []CapabilityBinding {
 	}
 	sort.Slice(out, func(i, j int) bool { return string(out[i].Capability) < string(out[j].Capability) })
 	return out
+}
+
+// SetSandbox configures an optional execution sandbox for process isolation.
+func (b *Broker) SetSandbox(sandbox *ExecutionSandbox) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.sandbox = sandbox
+}
+
+// Sandbox returns the configured execution sandbox, if any.
+func (b *Broker) Sandbox() *ExecutionSandbox {
+	b.mu.RLock()
+	defer b.mu.RUnlock()
+	return b.sandbox
 }
 
 // Approve registers an explicit approval on the broker for a specific execution ID.
@@ -401,13 +416,24 @@ func (b *Broker) Execute(ctx ExecutionContext, request ToolRequest) (ToolResult,
 		return brokerFailureResult(request, ToolStatusAdapterError, coded, evID), coded
 	}
 	engine := selection.Adapter
+	b.mu.RLock()
+	sandbox := b.sandbox
+	b.mu.RUnlock()
 
-	// Build envelope with deterministic matched-rule metadata (no secrets)
+	// Build envelope with deterministic matched-rule metadata (no secrets).
+	// WorktreeRoot is provided by the sandbox when configured; adapters
+	// must not expose host paths to workers.
+	worktreeRoot := ""
+	if sandbox != nil {
+		worktreeRoot = sandbox.WorktreeRoot()
+	}
 	envelope := ExecutionEnvelope{
 		ContractVersion: HarnessContractVersion,
 		ExecutionID:     request.ExecutionID,
 		TaskID:          request.TaskID,
 		WorktreeID:      request.WorktreeID,
+		ProjectID:       request.WorktreeID, // Use WorktreeID as ProjectID fallback; app bridge sets correctly
+		WorktreeRoot:    worktreeRoot,
 		ToolName:        request.ToolName,
 		Input:           request.Input,
 		PolicyDecision:  decision,
@@ -422,13 +448,18 @@ func (b *Broker) Execute(ctx ExecutionContext, request ToolRequest) (ToolResult,
 		TraceID: request.TraceID,
 	}
 
-	// Execute with context timeout
 	execCtx, cancel := context.WithTimeout(ctx, request.Timeout)
 	defer cancel()
 	execCtx = &contextWithTrace{Context: execCtx, traceID: request.TraceID}
 
 	startedAt := b.clock()
-	result, execErr := engine.Execute(NewExecutionContext(execCtx, request.TraceID), envelope)
+	var result ToolResult
+	var execErr error
+	if sandbox != nil {
+		result, execErr = sandbox.ExecuteAdapter(NewExecutionContext(execCtx, request.TraceID), engine, envelope)
+	} else {
+		result, execErr = engine.Execute(NewExecutionContext(execCtx, request.TraceID), envelope)
+	}
 	completedAt := b.clock()
 
 	if execErr != nil {
