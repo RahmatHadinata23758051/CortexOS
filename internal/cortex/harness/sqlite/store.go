@@ -615,6 +615,85 @@ func (s *Store) RecoverInterrupted(ctx context.Context, now time.Time) ([]string
 	return workerIDs, nil
 }
 
+// ApprovalState is the persisted approval record for policy "ask" decisions.
+type ApprovalState struct {
+	ID          string
+	ExecutionID string
+	ToolName    string
+	Action      string
+	Approver    string
+	Reason      string
+	GrantedAt   time.Time
+}
+
+func (s *Store) SaveApproval(ctx context.Context, approval ApprovalState) error {
+	if err := checkStore(ctx, s); err != nil {
+		return err
+	}
+	if approval.ID == "" || approval.ExecutionID == "" || approval.Approver == "" {
+		return errors.New("approval id, execution id, and approver are required")
+	}
+	if approval.GrantedAt.IsZero() {
+		approval.GrantedAt = time.Now().UTC()
+	}
+	_, err := s.db.ExecContext(ctx, `INSERT INTO harness_approvals
+		(id, execution_id, tool_name, action, approver, reason, granted_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(execution_id) DO UPDATE SET tool_name=excluded.tool_name,
+		action=excluded.action, approver=excluded.approver, reason=excluded.reason,
+		granted_at=excluded.granted_at`,
+		approval.ID, approval.ExecutionID, approval.ToolName, approval.Action,
+		harness.RedactString(approval.Approver), harness.RedactString(approval.Reason),
+		approval.GrantedAt.UTC().Format(time.RFC3339Nano))
+	if err != nil {
+		return fmt.Errorf("save approval %q: %w", approval.ID, err)
+	}
+	return nil
+}
+
+func (s *Store) GetApproval(ctx context.Context, executionID string) (ApprovalState, error) {
+	if err := checkStore(ctx, s); err != nil {
+		return ApprovalState{}, err
+	}
+	var app ApprovalState
+	var granted string
+	var toolName, action, reason sql.NullString
+	err := s.db.QueryRowContext(ctx, `SELECT id, execution_id, tool_name, action, approver, reason, granted_at
+		FROM harness_approvals WHERE execution_id = ?`, executionID).Scan(
+		&app.ID, &app.ExecutionID, &toolName, &action, &app.Approver, &reason, &granted)
+	if errors.Is(err, sql.ErrNoRows) {
+		return ApprovalState{}, ErrNotFound
+	}
+	if err != nil {
+		return ApprovalState{}, fmt.Errorf("get approval %q: %w", executionID, err)
+	}
+	if toolName.Valid {
+		app.ToolName = toolName.String
+	}
+	if action.Valid {
+		app.Action = action.String
+	}
+	if reason.Valid {
+		app.Reason = reason.String
+	}
+	app.GrantedAt, _ = time.Parse(time.RFC3339Nano, granted)
+	return app, nil
+}
+
+func (s *Store) DeleteApproval(ctx context.Context, executionID string) error {
+	if err := checkStore(ctx, s); err != nil {
+		return err
+	}
+	result, err := s.db.ExecContext(ctx, `DELETE FROM harness_approvals WHERE execution_id = ?`, executionID)
+	if err != nil {
+		return fmt.Errorf("delete approval %q: %w", executionID, err)
+	}
+	if n, _ := result.RowsAffected(); n == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
 func ownershipOrNotFound(ctx context.Context, s *Store, id string) error {
 	var owner string
 	err := s.db.QueryRowContext(ctx, `SELECT owner_process_id FROM harness_workers WHERE id=?`, id).Scan(&owner)
