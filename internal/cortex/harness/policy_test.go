@@ -7,9 +7,9 @@ import (
 
 func TestPolicyLastMatchingRuleWins(t *testing.T) {
 	policy := Policy{Rules: []Rule{
-		{ID: "default-shell", Action: "shell", Resource: "*", Effect: EffectAsk},
-		{ID: "allow-git-status", Action: "shell", Resource: "git status *", Effect: EffectAllow},
-		{ID: "deny-push", Action: "shell", Resource: "git push *", Effect: EffectDeny},
+		{ID: "default-shell", Action: "shell", Resource: "*", Effect: EffectAsk, Priority: 1},
+		{ID: "allow-git-status", Action: "shell", Resource: "git status *", Effect: EffectAllow, Priority: 10},
+		{ID: "deny-push", Action: "shell", Resource: "git push *", Effect: EffectDeny, Priority: 10},
 	}}
 
 	decision, err := policy.Evaluate(Request{Action: "SHELL", Resource: "git status --short"})

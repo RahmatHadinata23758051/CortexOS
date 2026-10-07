@@ -3,6 +3,7 @@ package harness
 import (
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
 )
 
@@ -21,6 +22,7 @@ type Rule struct {
 	Action   string `json:"action"`
 	Resource string `json:"resource"`
 	Effect   Effect `json:"effect"`
+	Priority int    `json:"priority,omitempty"`
 }
 
 type Request struct {
@@ -41,6 +43,14 @@ type Policy struct {
 	Rules []Rule `json:"rules"`
 }
 
+func NewPolicy(rules []Rule) (Policy, error) {
+	p := Policy{Rules: append([]Rule(nil), rules...)}
+	if err := p.Validate(); err != nil {
+		return Policy{}, err
+	}
+	return p, nil
+}
+
 var (
 	ErrInvalidPolicy  = errors.New("harness: invalid permission policy")
 	ErrInvalidRequest = errors.New("harness: invalid permission request")
@@ -51,6 +61,12 @@ func (p Policy) Validate() error {
 	for _, rule := range p.Rules {
 		if rule.ID == "" || rule.Action == "" || rule.Resource == "" {
 			return fmt.Errorf("%w: rule id, action, and resource are required", ErrInvalidPolicy)
+		}
+		if rule.Priority < 0 {
+			return fmt.Errorf("%w: rule priority must not be negative", ErrInvalidPolicy)
+		}
+		if strings.ContainsAny(rule.Resource, "\x00\r\n") || strings.Contains(strings.ReplaceAll(rule.Resource, `\\`, "/"), "../") {
+			return fmt.Errorf("%w: unsafe resource pattern", ErrInvalidPolicy)
 		}
 		if _, exists := seen[rule.ID]; exists {
 			return fmt.Errorf("%w: duplicate rule id %q", ErrInvalidPolicy, rule.ID)
@@ -80,11 +96,19 @@ func (p Policy) Evaluate(request Request) (Decision, error) {
 		Effect:          EffectDeny,
 		Reason:          "no matching rule; default deny",
 	}
-	for _, rule := range p.Rules {
+	rules := append([]Rule(nil), p.Rules...)
+	sort.SliceStable(rules, func(i, j int) bool {
+		if rules[i].Priority != rules[j].Priority {
+			return rules[i].Priority > rules[j].Priority
+		}
+		return rules[i].ID < rules[j].ID
+	})
+	for _, rule := range rules {
 		if actionMatches(action, rule.Action) && wildcardMatch(normalizeResource(rule.Resource), resource) {
 			decision.Effect = rule.Effect
 			decision.RuleID = rule.ID
-			decision.Reason = "matched rule"
+			decision.Reason = "matched highest-priority rule"
+			break
 		}
 	}
 	return decision, nil

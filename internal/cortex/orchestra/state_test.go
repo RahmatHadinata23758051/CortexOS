@@ -63,6 +63,15 @@ func TestApplyTransitionRetryIsExplicitAndIdempotent(t *testing.T) {
 	}
 }
 
+func TestApplyTransitionNoOpIsExplicitlyRejected(t *testing.T) {
+	task := validTask()
+	task.Status = TaskReady
+	result, err := ApplyTransition(task, TransitionValidate)
+	if err == nil || !errors.Is(err, ErrInvalidTransition) {
+		t.Fatalf("expected no-op transition rejection, got %#v, %v", result, err)
+	}
+}
+
 func TestValidateTaskBoundsAttempts(t *testing.T) {
 	task := validTask()
 	task.AttemptCount = 3

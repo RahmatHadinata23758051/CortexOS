@@ -86,6 +86,36 @@ func TestStorePersistsTasksExecutionsAndEventsAcrossReopen(t *testing.T) {
 	}
 }
 
+func TestAppendEventConcurrentSequencesAreUnique(t *testing.T) {
+	store, err := Open(context.Background(), filepath.Join(t.TempDir(), "orchestra.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	ctx := context.Background()
+	if err := store.SaveTask(ctx, testTask()); err != nil {
+		t.Fatal(err)
+	}
+	const count = 32
+	for i := 0; i < count; i++ {
+		if err := store.AppendEvent(ctx, orchestra.TaskEvent{TaskID: "task-1", Type: orchestra.EventTaskValidated, Message: "concurrent"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	events, err := store.ListEvents(ctx, "task-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(events) != count {
+		t.Fatalf("event count = %d, want %d", len(events), count)
+	}
+	for i, event := range events {
+		if event.Sequence != int64(i+1) {
+			t.Fatalf("event %d sequence = %d", i, event.Sequence)
+		}
+	}
+}
+
 func TestStoreRejectsMissingTasksAndHonorsCancellation(t *testing.T) {
 	store, err := Open(context.Background(), filepath.Join(t.TempDir(), "orchestra.db"))
 	if err != nil {
@@ -123,6 +153,18 @@ func TestRecoverInterruptedTasksIsDeterministicAndBounded(t *testing.T) {
 	second.Status = orchestra.TaskRunning
 	second.AttemptCount = 2
 	if err := store.SaveTask(ctx, second); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.SaveExecution(ctx, orchestra.Execution{ID: "task-a-1", TaskID: first.ID, Attempt: 1, Status: orchestra.TaskRunning}); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.SaveExecution(ctx, orchestra.Execution{ID: "task-b-2", TaskID: second.ID, Attempt: 2, Status: orchestra.TaskRunning}); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.RegisterActive(ctx, first.ID, "task-a-1", "worker-a", time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.RegisterActive(ctx, second.ID, "task-b-2", "worker-b", time.Now()); err != nil {
 		t.Fatal(err)
 	}
 

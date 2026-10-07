@@ -34,7 +34,7 @@ func validInspectionRequest() InspectionRequest {
 }
 
 func TestMergeAuthorityAcceptsGovernedTask(t *testing.T) {
-	authority := MergeAuthority{}
+	authority := MergeAuthority{Capability: MergeCapability}
 	req := validInspectionRequest()
 	result, err := authority.Inspect(context.Background(), req)
 	if err != nil {
@@ -46,7 +46,7 @@ func TestMergeAuthorityAcceptsGovernedTask(t *testing.T) {
 }
 
 func TestMergeAuthorityRejectsSelfReportedSuccess(t *testing.T) {
-	authority := MergeAuthority{}
+	authority := MergeAuthority{Capability: MergeCapability}
 	req := validInspectionRequest()
 	req.Execution.Status = TaskSuccess
 	_, err := authority.Inspect(context.Background(), req)
@@ -56,7 +56,7 @@ func TestMergeAuthorityRejectsSelfReportedSuccess(t *testing.T) {
 }
 
 func TestMergeAuthorityRejectsDirtyAndInvalidWorktrees(t *testing.T) {
-	authority := MergeAuthority{}
+	authority := MergeAuthority{Capability: MergeCapability}
 	req := validInspectionRequest()
 	req.Worktree.Dirty = true
 	if _, err := authority.Inspect(context.Background(), req); !errors.Is(err, ErrDirtyWorktree) {
@@ -77,7 +77,7 @@ func TestMergeAuthorityRejectsDirtyAndInvalidWorktrees(t *testing.T) {
 }
 
 func TestMergeAuthorityRejectsMissingAndFailedEvidence(t *testing.T) {
-	authority := MergeAuthority{}
+	authority := MergeAuthority{Capability: MergeCapability}
 	req := validInspectionRequest()
 	req.Evidence = nil
 	if _, err := authority.Inspect(context.Background(), req); !errors.Is(err, ErrMissingEvidence) {
@@ -92,7 +92,7 @@ func TestMergeAuthorityRejectsMissingAndFailedEvidence(t *testing.T) {
 }
 
 func TestMergeAuthorityRejectsTasksNotInAwaitingInspection(t *testing.T) {
-	authority := MergeAuthority{}
+	authority := MergeAuthority{Capability: MergeCapability}
 	req := validInspectionRequest()
 	req.Task.Status = TaskRunning
 	if _, err := authority.Inspect(context.Background(), req); !errors.Is(err, ErrInspectionRejected) {

@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"sync/atomic"
+	"time"
 )
 
 var (
@@ -26,19 +28,26 @@ type ExecutionEnvelope struct {
 }
 
 type Dispatcher struct {
-	mu     sync.Mutex
-	store  TaskStore
-	exec   Executor
-	active map[TaskID]*activeExecution
+	mu       sync.Mutex
+	store    TaskStore
+	exec     Executor
+	active   map[TaskID]*activeExecution
+	workerID string
 }
 
 type activeExecution struct {
 	Execution Execution
 	Cancel    context.CancelFunc
+	WorkerID  string
+	terminal  atomic.Bool
 }
 
-func NewDispatcher(store TaskStore, exec Executor) *Dispatcher {
-	return &Dispatcher{store: store, exec: exec, active: make(map[TaskID]*activeExecution)}
+func NewDispatcher(store TaskStore, exec Executor, workerID ...string) *Dispatcher {
+	id := ""
+	if len(workerID) > 0 {
+		id = workerID[0]
+	}
+	return &Dispatcher{store: store, exec: exec, active: make(map[TaskID]*activeExecution), workerID: id}
 }
 
 func (d *Dispatcher) Dispatch(ctx context.Context, taskID TaskID) (Execution, error) {
@@ -79,11 +88,15 @@ func (d *Dispatcher) Dispatch(ctx context.Context, taskID TaskID) (Execution, er
 	if err := d.store.SaveTask(ctx, result.Task); err != nil {
 		return Execution{}, err
 	}
-	if err := d.store.AppendEvent(ctx, TaskEvent{TaskID: task.ID, Type: EventTaskDispatched, From: task.Status, To: result.Task.Status}); err != nil {
+	if err := d.store.SaveExecution(ctx, execution); err != nil {
 		return Execution{}, err
 	}
-	execCtx, cancel := context.WithCancel(context.WithoutCancel(ctx))
-	d.active[taskID] = &activeExecution{Execution: execution, Cancel: cancel}
+	if err := d.store.AppendEvent(ctx, TaskEvent{TaskID: task.ID, ExecutionID: execution.ID, Type: EventTaskDispatched, From: task.Status, To: result.Task.Status}); err != nil {
+		return Execution{}, err
+	}
+	execCtx, cancel := context.WithCancel(ctx)
+	active := &activeExecution{Execution: execution, Cancel: cancel, WorkerID: d.workerID}
+	d.active[taskID] = active
 	if d.exec != nil {
 		go d.execute(execCtx, execution, ExecutionEnvelope{TaskID: result.Task.ID, ProjectID: result.Task.ProjectID, WorktreeID: result.Task.WorktreeID, Attempt: result.Task.AttemptCount, Title: result.Task.Title})
 	}
@@ -100,6 +113,9 @@ func (d *Dispatcher) Complete(ctx context.Context, executionID ExecutionID, outc
 		execution := active.Execution
 		if execution.ID != executionID {
 			continue
+		}
+		if active.terminal.Load() {
+			return fmt.Errorf("%w: execution %q already completed", ErrInvalidDispatch, executionID)
 		}
 		task, err := d.store.GetTask(ctx, taskID)
 		if err != nil {
@@ -119,7 +135,18 @@ func (d *Dispatcher) Complete(ctx context.Context, executionID ExecutionID, outc
 		if err != nil {
 			return err
 		}
+		active.terminal.Store(true)
+		if active.Cancel != nil {
+			active.Cancel()
+		}
 		if err := d.store.SaveTask(ctx, result.Task); err != nil {
+			return err
+		}
+		now := time.Now().UTC()
+		execution.Status = to
+		execution.FinishedAt = &now
+		execution.EvidenceIDs = append([]string(nil), evidenceIDs...)
+		if err := d.store.SaveExecution(ctx, execution); err != nil {
 			return err
 		}
 		if err := d.store.AppendEvent(ctx, TaskEvent{TaskID: task.ID, ExecutionID: executionID, Type: eventType, From: task.Status, To: to, EvidenceIDs: evidenceIDs}); err != nil {
@@ -141,6 +168,10 @@ func (d *Dispatcher) Cancel(ctx context.Context, taskID TaskID) error {
 	if !exists {
 		return fmt.Errorf("%w: task %q is not active", ErrInvalidDispatch, taskID)
 	}
+	if active.terminal.Load() {
+		return fmt.Errorf("%w: task %q already completed", ErrTerminalTask, taskID)
+	}
+	active.terminal.Store(true)
 	if active.Cancel != nil {
 		active.Cancel()
 	}
@@ -150,6 +181,13 @@ func (d *Dispatcher) Cancel(ctx context.Context, taskID TaskID) error {
 	}
 	result, err := ApplyTransition(task, TransitionCancel)
 	if err != nil {
+		return err
+	}
+	now := time.Now().UTC()
+	execution := active.Execution
+	execution.Status = TaskCanceled
+	execution.FinishedAt = &now
+	if err := d.store.SaveExecution(ctx, execution); err != nil {
 		return err
 	}
 	if err := d.store.SaveTask(ctx, result.Task); err != nil {
@@ -168,4 +206,19 @@ func (d *Dispatcher) execute(ctx context.Context, execution Execution, envelope 
 		return
 	}
 	_ = d.Complete(ctx, execution.ID, TaskAwaitingInspection, []string{"worker-evidence"})
+}
+
+// VerifyWorkerIdentity checks if a workerID matches the current active worker for an execution.
+func (d *Dispatcher) VerifyWorkerIdentity(taskID TaskID, executionID ExecutionID, workerID string) bool {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	for tid, active := range d.active {
+		if tid == taskID && active.Execution.ID == executionID {
+			if d.workerID != "" && workerID != d.workerID {
+				return false
+			}
+			return true
+		}
+	}
+	return false
 }

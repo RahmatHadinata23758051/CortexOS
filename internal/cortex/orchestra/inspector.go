@@ -49,9 +49,16 @@ type Inspector interface {
 	Inspect(context.Context, InspectionRequest) (InspectionResult, error)
 }
 
-type MergeAuthority struct{}
+type MergeAuthority struct {
+	Capability string
+}
 
-func (MergeAuthority) Inspect(ctx context.Context, request InspectionRequest) (InspectionResult, error) {
+const MergeCapability = "orchestra.merge.v1"
+
+func (authority MergeAuthority) Inspect(ctx context.Context, request InspectionRequest) (InspectionResult, error) {
+	if authority.Capability != MergeCapability {
+		return InspectionResult{}, fmt.Errorf("%w: merge capability is invalid", ErrInspectionRejected)
+	}
 	if ctx == nil {
 		return InspectionResult{}, fmt.Errorf("%w: context is required", ErrInspectionRejected)
 	}

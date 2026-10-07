@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/RahmatHadinata23758051/CortexOS/internal/cortex/orchestra"
@@ -207,19 +208,47 @@ func (s *Store) AppendEvent(ctx context.Context, event orchestra.TaskEvent) erro
 		return fmt.Errorf("marshal event evidence ids: %w", err)
 	}
 
-	tx, err := s.db.BeginTx(ctx, nil)
+	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelSerializable})
 	if err != nil {
 		return fmt.Errorf("begin append event: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
 
 	if event.Sequence <= 0 {
-		var maxSeq int64
-		err := tx.QueryRowContext(ctx, `SELECT COALESCE(MAX(sequence), 0) FROM orchestra_events WHERE task_id = ?`, string(event.TaskID)).Scan(&maxSeq)
-		if err != nil {
-			return fmt.Errorf("query max sequence: %w", err)
+		for {
+			var maxSeq int64
+			err := tx.QueryRowContext(ctx, `SELECT COALESCE(MAX(sequence), 0) FROM orchestra_events WHERE task_id = ?`, string(event.TaskID)).Scan(&maxSeq)
+			if err != nil {
+				return fmt.Errorf("query max sequence: %w", err)
+			}
+			event.Sequence = maxSeq + 1
+			query := `INSERT INTO orchestra_events (
+				id, task_id, execution_id, sequence, type, from_status, to_status, message, evidence_ids, occurred_at
+			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+			_, err = tx.ExecContext(ctx, query,
+				string(event.ID),
+				string(event.TaskID),
+				nullableString(string(event.ExecutionID)),
+				event.Sequence,
+				string(event.Type),
+				string(event.From),
+				string(event.To),
+				event.Message,
+				string(evidenceJSON),
+				event.OccurredAt.Format(time.RFC3339Nano),
+			)
+			if err == nil {
+				break
+			}
+			if isUniqueConstraintError(err) {
+				continue
+			}
+			return fmt.Errorf("insert task event: %w", err)
 		}
-		event.Sequence = maxSeq + 1
+		if err := tx.Commit(); err != nil {
+			return fmt.Errorf("commit task event: %w", err)
+		}
+		return nil
 	}
 
 	query := `INSERT INTO orchestra_events (
@@ -247,6 +276,13 @@ func (s *Store) AppendEvent(ctx context.Context, event orchestra.TaskEvent) erro
 	return nil
 }
 
+func isUniqueConstraintError(err error) bool {
+	if err == nil {
+		return false
+	}
+	return strings.Contains(strings.ToLower(err.Error()), "unique constraint")
+}
+
 func (s *Store) ListEvents(ctx context.Context, id orchestra.TaskID) ([]orchestra.TaskEvent, error) {
 	if s == nil || s.db == nil {
 		return nil, orchestra.ErrStoreUnavailable
@@ -266,7 +302,8 @@ func (s *Store) ListEvents(ctx context.Context, id orchestra.TaskID) ([]orchestr
 	var events []orchestra.TaskEvent
 	for rows.Next() {
 		var event orchestra.TaskEvent
-		var rawID, taskIDStr, execIDStr, typeStr, fromStr, toStr, evidenceStr, occurredAtStr string
+		var rawID, taskIDStr, typeStr, fromStr, toStr, evidenceStr, occurredAtStr string
+		var execIDStr *string
 		err := rows.Scan(
 			&rawID,
 			&taskIDStr,
@@ -284,7 +321,9 @@ func (s *Store) ListEvents(ctx context.Context, id orchestra.TaskID) ([]orchestr
 		}
 		event.ID = orchestra.EventID(rawID)
 		event.TaskID = orchestra.TaskID(taskIDStr)
-		event.ExecutionID = orchestra.ExecutionID(execIDStr)
+		if execIDStr != nil {
+			event.ExecutionID = orchestra.ExecutionID(*execIDStr)
+		}
 		event.Type = orchestra.EventType(typeStr)
 		event.From = orchestra.TaskStatus(fromStr)
 		event.To = orchestra.TaskStatus(toStr)
@@ -437,7 +476,8 @@ func (s *Store) UnregisterActive(ctx context.Context, taskID orchestra.TaskID) e
 
 // RecoverInterrupted inspects tasks left in running/awaitingInspection or registered
 // in orchestra_active_tasks, transitions them cleanly to failed or ready, appends
-// recovery events, and clears active locks.
+// recovery events, and clears active locks. It only recovers tasks that are actually
+// registered in the active table, preventing interference with tasks owned by other processes.
 func (s *Store) RecoverInterrupted(ctx context.Context, reason string) ([]orchestra.TaskID, error) {
 	if s == nil || s.db == nil {
 		return nil, orchestra.ErrStoreUnavailable
@@ -449,15 +489,18 @@ func (s *Store) RecoverInterrupted(ctx context.Context, reason string) ([]orches
 		reason = "recovered from interrupted process shutdown"
 	}
 
-	tx, err := s.db.BeginTx(ctx, nil)
+	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelSerializable})
 	if err != nil {
 		return nil, fmt.Errorf("begin recovery: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	// Find tasks that are running or awaiting inspection
-	rows, err := tx.QueryContext(ctx, `SELECT id, status, attempt_count, max_attempts FROM orchestra_tasks
-		WHERE status IN (?, ?) ORDER BY id ASC`, orchestra.TaskRunning, orchestra.TaskAwaitingInspection)
+	// Find tasks that are running or awaiting inspection AND have an active registration
+	rows, err := tx.QueryContext(ctx, `
+		SELECT t.id, t.status, t.attempt_count, t.max_attempts
+		FROM orchestra_tasks t
+		INNER JOIN orchestra_active_tasks a ON a.task_id = t.id
+		WHERE t.status IN (?, ?) ORDER BY t.id ASC`, orchestra.TaskRunning, orchestra.TaskAwaitingInspection)
 	if err != nil {
 		return nil, fmt.Errorf("query interrupted tasks: %w", err)
 	}
@@ -508,16 +551,25 @@ func (s *Store) RecoverInterrupted(ctx context.Context, reason string) ([]orches
 		_, err = tx.ExecContext(ctx, `INSERT INTO orchestra_events (
 			id, task_id, execution_id, sequence, type, from_status, to_status, message, evidence_ids, occurred_at
 		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-			eventID, string(it.id), "", maxSeq+1, string(eventType), string(it.status), string(newStatus), reason, "[]", now.Format(time.RFC3339Nano))
+			eventID, string(it.id), nil, maxSeq+1, string(eventType), string(it.status), string(newStatus), reason, "[]", now.Format(time.RFC3339Nano))
 		if err != nil {
 			return nil, fmt.Errorf("record recovery event for %q: %w", it.id, err)
 		}
 		recoveredIDs = append(recoveredIDs, it.id)
 	}
 
-	// Clean active table
-	if _, err := tx.ExecContext(ctx, `DELETE FROM orchestra_active_tasks`); err != nil {
-		return nil, fmt.Errorf("clear active tasks: %w", err)
+	// Clean active table for recovered tasks
+	if len(recoveredIDs) > 0 {
+		placeholders := make([]string, len(recoveredIDs))
+		args := make([]any, len(recoveredIDs))
+		for i, id := range recoveredIDs {
+			placeholders[i] = "?"
+			args[i] = string(id)
+		}
+		query := fmt.Sprintf(`DELETE FROM orchestra_active_tasks WHERE task_id IN (%s)`, strings.Join(placeholders, ","))
+		if _, err := tx.ExecContext(ctx, query, args...); err != nil {
+			return nil, fmt.Errorf("clear active tasks: %w", err)
+		}
 	}
 
 	if err := tx.Commit(); err != nil {

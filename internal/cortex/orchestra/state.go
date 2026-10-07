@@ -54,7 +54,7 @@ func ApplyTransition(task Task, transition Transition) (TransitionResult, error)
 		return TransitionResult{}, fmt.Errorf("%w: %s cannot accept %s", ErrInvalidTransition, task.Status, transition)
 	}
 	if to == task.Status {
-		return TransitionResult{Task: task, Changed: false}, nil
+		return TransitionResult{}, fmt.Errorf("%w: %s cannot accept %s (no-op)", ErrInvalidTransition, task.Status, transition)
 	}
 	if transition == TransitionDispatch {
 		task.AttemptCount++

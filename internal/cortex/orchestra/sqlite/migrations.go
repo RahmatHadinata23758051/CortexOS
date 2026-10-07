@@ -5,11 +5,14 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"sync"
 )
 
 const schemaVersion = "cortexos.orchestra.sqlite.v1"
 
 var ErrUnknownSchema = errors.New("unknown orchestra sqlite schema")
+
+var migrationMutex sync.Mutex
 
 var migrations = []string{
 	`CREATE TABLE orchestra_tasks (
@@ -69,6 +72,8 @@ var migrations = []string{
 func SchemaVersion() string { return schemaVersion }
 
 func ApplyMigrations(ctx context.Context, db *sql.DB) error {
+	migrationMutex.Lock()
+	defer migrationMutex.Unlock()
 	if ctx == nil {
 		return fmt.Errorf("%w: context is required", ErrUnknownSchema)
 	}
@@ -119,11 +124,18 @@ func ApplyMigrations(ctx context.Context, db *sql.DB) error {
 }
 
 func applyOne(ctx context.Context, db *sql.DB, version int, statement string) error {
-	tx, err := db.BeginTx(ctx, nil)
+	tx, err := db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelSerializable})
 	if err != nil {
 		return fmt.Errorf("begin orchestra migration %d: %w", version, err)
 	}
 	defer func() { _ = tx.Rollback() }()
+
+	var existingCount int
+	err = tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM orchestra_schema WHERE version = ?`, version).Scan(&existingCount)
+	if err == nil && existingCount > 0 {
+		return nil
+	}
+
 	if _, err := tx.ExecContext(ctx, statement); err != nil {
 		return fmt.Errorf("apply orchestra migration %d: %w", version, err)
 	}

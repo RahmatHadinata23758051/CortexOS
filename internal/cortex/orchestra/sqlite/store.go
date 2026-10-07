@@ -42,25 +42,15 @@ func Open(ctx context.Context, path string) (*Store, error) {
 	db.SetMaxOpenConns(1)
 	db.SetMaxIdleConns(1)
 	store := &Store{db: db, path: cleanPath}
+	if _, err := db.ExecContext(ctx, `PRAGMA foreign_keys = ON`); err != nil {
+		_ = db.Close()
+		return nil, fmt.Errorf("open orchestra database: enable foreign keys: %w", err)
+	}
 	if err := ApplyMigrations(ctx, db); err != nil {
 		_ = db.Close()
 		return nil, fmt.Errorf("open orchestra database: %w", err)
 	}
 	return store, nil
-}
-
-func (s *Store) DB() *sql.DB {
-	if s == nil {
-		return nil
-	}
-	return s.db
-}
-
-func (s *Store) Path() string {
-	if s == nil {
-		return ""
-	}
-	return s.path
 }
 
 func (s *Store) Close() error {
