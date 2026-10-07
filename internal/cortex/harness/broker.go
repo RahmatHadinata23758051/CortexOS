@@ -2,6 +2,7 @@ package harness
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 	"time"
@@ -12,7 +13,8 @@ import (
 type Broker struct {
 	mu           sync.RWMutex
 	tools        map[string]ToolDefinition
-	engines      map[ToolKind]EngineAdapter
+	engines      map[ToolKind]EngineAdapter // Legacy: single engine per kind
+	router       *BasicRouter               // New: capability-based routing
 	policyEngine PolicyEngine
 	clock        func() time.Time
 }
@@ -22,6 +24,7 @@ func NewBroker(policyEngine PolicyEngine) *Broker {
 	return &Broker{
 		tools:        make(map[string]ToolDefinition),
 		engines:      make(map[ToolKind]EngineAdapter),
+		router:       NewBasicRouter(DefaultRoutingPolicy()),
 		policyEngine: policyEngine,
 		clock:        time.Now,
 	}
@@ -77,11 +80,32 @@ func (b *Broker) RegisterEngine(engine EngineAdapter) error {
 		return fmt.Errorf("%w: engine is nil", ErrInvalidContract)
 	}
 	desc := engine.Describe()
+	identity := AdapterIdentity{
+		Name:          desc.Name,
+		InstanceID:    generateInstanceID(desc.Name),
+		Kind:          engine.Kind(),
+		Class:         engineClassFromToolKind(engine.Kind()),
+		Version:       desc.Version,
+		SchemaVersion: desc.SchemaVersion,
+	}
+	if err := b.router.Register(engine, ExtendedAdapterDescriptor{
+		AdapterDescriptor: desc,
+		Identity:          identity,
+		ResourceReq:       DefaultResourceRequirements(identity.Class),
+	}); err != nil {
+		return err
+	}
+	return b.registerLegacyEngine(engine)
+}
+
+// registerLegacyEngine maintains backward compatibility with the existing single-engine-per-kind model.
+func (b *Broker) registerLegacyEngine(engine EngineAdapter) error {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	desc := engine.Describe()
 	if desc.Name == "" || desc.Kind == "" {
 		return fmt.Errorf("%w: engine descriptor missing name or kind", ErrInvalidContract)
 	}
-	b.mu.Lock()
-	defer b.mu.Unlock()
 	if _, exists := b.engines[engine.Kind()]; exists {
 		return fmt.Errorf("%w: engine kind %q already registered", ErrDuplicateTool, engine.Kind())
 	}
@@ -89,7 +113,7 @@ func (b *Broker) RegisterEngine(engine EngineAdapter) error {
 	return nil
 }
 
-// Engine retrieves an engine adapter by kind.
+// Engine retrieves an engine adapter by kind using the legacy single-engine model.
 func (b *Broker) Engine(kind ToolKind) (EngineAdapter, bool) {
 	b.mu.RLock()
 	defer b.mu.RUnlock()
@@ -144,13 +168,17 @@ func (b *Broker) Execute(ctx ExecutionContext, request ToolRequest) (ToolResult,
 		return ToolResult{}, ErrorFor(ErrPolicyDenied)
 	}
 
-	// Select engine
-	b.mu.RLock()
-	engine, ok := b.engines[def.Kind]
-	b.mu.RUnlock()
-	if !ok {
-		return ToolResult{}, ErrorFor(fmt.Errorf("%w: no engine for kind %q", ErrAdapterFailure, def.Kind))
+	// Select engine via capability-based router
+	selection, err := b.router.Find(ctx, def.Capabilities)
+	if err != nil {
+		// Preserve the broker's legacy unavailable-engine contract while the
+		// router exposes more precise typed failures to direct callers.
+		if errors.Is(err, ErrNoEligibleAdapter) {
+			return ToolResult{}, ErrorFor(fmt.Errorf("%w: no adapter for tool kind %q", ErrAdapterFailure, def.Kind))
+		}
+		return ToolResult{}, ErrorFor(err)
 	}
+	engine := selection.Adapter
 
 	// Build envelope
 	envelope := ExecutionEnvelope{
@@ -163,9 +191,10 @@ func (b *Broker) Execute(ctx ExecutionContext, request ToolRequest) (ToolResult,
 		PolicyDecision:  decision,
 		Timeout:         request.Timeout,
 		Audit: AuditMetadata{
-			Adapter:      engine.Describe().Name,
-			PolicyRuleID: decision.RuleID,
-			TraceID:      request.TraceID,
+			Adapter:       selection.Descriptor.Identity.Name,
+			PolicyRuleID:  decision.RuleID,
+			TraceID:       request.TraceID,
+			CorrelationID: selection.TieBreakKey,
 		},
 		TraceID: request.TraceID,
 	}

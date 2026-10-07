@@ -58,7 +58,24 @@ Supported engine kinds are:
 
 `EngineAdapter` exposes only `Kind`, `Capabilities`, `Execute`, `Health`, and `Describe`. Engine-specific process handles, prompts, protocols, command lines, environment variables, and provider SDK types remain behind the adapter. `ExecutionEnvelope` carries stable IDs, policy decision, input, timeout, and trace metadata; adapter implementations must not use ambient state to escape the assigned sandbox.
 
-Tools declare capabilities such as `shell`, `file_read`, `file_write`, `git`, `search`, `test_run`, and `build`. The broker uses the tool's primary capability as the policy action and the worktree identity as the policy resource. Later persistence and resource-governance issues may extend this without changing the execution DTO boundary.
+**Engine Adapter Router (BAN-89)**  
+The `AdapterRouter` (`internal/cortex/harness/router.go`) provides a stable, engine-neutral registry and deterministic selection layer:
+
+| Component | Responsibility |
+| --- | --- |
+| `ExtendedAdapterDescriptor` | Augments `AdapterDescriptor` with `AdapterIdentity` (name, instance ID, kind, class, version, schema version), declared `ResourceRequirement` (min/peak memory, CPU priority), and optional `VersionConstraint` for compatibility. |
+| `RoutingPolicy` | Controls `AllowedClasses`/`DeniedClasses`, `AllowedAdapters`/`DeniedAdapters`, `PreferredClasses` (priority order), `MaxFallbackAttempts` (bounded retries), and `RequireHealthEnforcement`. |
+| `RoutingConstraints` | Request-scoped constraints: `ExcludeClasses`, `MinMemoryMB`, `PreferInstanceID`, `RequiredSchemaVersion`, `RequiredAdapterVersion`. |
+| `AdapterSelection` | Returns selected adapter, reason, tie-break key, and a bounded `RetryOrder` of alternative adapters for fallback. |
+| `HealthStatus` | Tracks `Healthy`, check counts, fail counts, consecutive failures, last check time, and reason. |
+
+Routing algorithm (deterministic):
+1. Filter registered adapters by required capabilities, policy class/adapter allow/deny lists, minimum memory, schema/version constraints.
+2. Sort by `PreferredClasses` rank, then `FailCount` (ascending), then lexicographic `name|instanceId` tie-break.
+3. If health enforcement enabled, probe candidates in order (bounded by `MaxFallbackAttempts + 1`); return first healthy.
+4. On no eligible adapter: typed error `ErrNoEligibleAdapter`, `ErrPolicyDeniedEngine`, `ErrVersionIncompatible`, or `ErrAdapterUnhealthy` with retryable flag for health.
+
+Tools declare capabilities such as `shell`, `file_read`, `file_write`, `git`, `search`, `test_run`, and `build`. The broker uses the tool's declared capabilities to query the router; the router selects the best matching adapter. Engine class and resource requirements (`EngineClassNative`, `EngineClassPi`, `EngineClassOMP`) enable resource-aware scheduling.
 
 ## Timeout and cancellation
 
@@ -90,6 +107,10 @@ Redaction is a safety boundary, not a guarantee that arbitrary untrusted content
 | `ErrWorktreeViolation` / `harness.worktree_violation` | Operation attempted to leave or violate the assigned worktree. | No |
 | `ErrSandbox` / `harness.sandbox_error` | Sandbox setup or enforcement failed. | Yes |
 | `ErrAdapterFailure` / `harness.adapter_failure` | Adapter unavailable or returned an unknown execution failure. | No |
+| `ErrNoEligibleAdapter` / `harness.no_eligible_adapter` | No registered adapter satisfies requested capabilities and constraints. | No |
+| `ErrPolicyDeniedEngine` / `harness.policy_denied_engine` | Matching adapters were excluded by routing policy. | No |
+| `ErrAdapterUnhealthy` / `harness.adapter_unhealthy` | Matching adapters failed health checks after bounded fallback. | Yes |
+| `ErrVersionIncompatible` / `harness.version_incompatible` | Matching adapters do not satisfy the requested version range. | No |
 | `ErrToolNotFound` / `harness.tool_not_found` | Request referenced an unregistered tool. | No |
 | `ErrInvalidContract` / `harness.invalid_contract` | DTO, definition, or version failed validation. | No |
 
