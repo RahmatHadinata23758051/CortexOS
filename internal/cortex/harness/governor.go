@@ -233,7 +233,6 @@ func (g *Governor) Admit(ctx context.Context, task TaskDescriptor) (*Reservation
 	}
 	if canAdmit(cs, task) {
 		reservation := g.reserveLocked(cs, task)
-		g.recordAdmissionLocked(cs)
 		g.mu.Unlock()
 		return reservation, nil
 	}
@@ -350,6 +349,8 @@ func (g *Governor) reserveLocked(cs *governorClass, task TaskDescriptor) *Reserv
 	if cs.activeCPU > cs.peakCPU {
 		cs.peakCPU = cs.activeCPU
 	}
+	cs.admitted++
+	g.telemetry.totalAdmitted++
 	return &Reservation{
 		TaskID: task.TaskID, EngineClass: task.EngineClass, Priority: task.Priority,
 		MemoryMB: task.EstimatedMemoryMB, CPUPriority: task.EstimatedCPUPriority,
