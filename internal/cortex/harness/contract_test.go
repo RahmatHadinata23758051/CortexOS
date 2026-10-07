@@ -3,6 +3,7 @@ package harness
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"testing"
 	"time"
 )
@@ -295,6 +296,9 @@ func TestExecutionEnvelope(t *testing.T) {
 	data, err := json.Marshal(env)
 	if err != nil {
 		t.Fatal(err)
+	}
+	if strings.Contains(string(data), env.WorktreeRoot) {
+		t.Fatalf("serialized envelope leaked worktree root: %s", data)
 	}
 
 	var decoded ExecutionEnvelope

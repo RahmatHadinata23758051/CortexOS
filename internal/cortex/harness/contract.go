@@ -195,18 +195,21 @@ func (e *ToolError) IsRetriable() bool {
 // ExecutionEnvelope is the complete execution context passed to an engine adapter.
 // It carries task, worktree, policy decision, and timeout/cancellation context.
 type ExecutionEnvelope struct {
-	ContractVersion string          `json:"contractVersion"`
-	ExecutionID     string          `json:"executionId"`
-	TaskID          string          `json:"taskId"`
-	WorktreeID      string          `json:"worktreeId"`
-	ProjectID       string          `json:"projectId"`
-	WorktreeRoot    string          `json:"worktreeRoot"` // Absolute root for sandbox; never exposed to frontend
-	ToolName        string          `json:"toolName"`
-	Input           json.RawMessage `json:"input"`
-	PolicyDecision  PolicyDecision  `json:"policyDecision"`
-	Timeout         time.Duration   `json:"timeout"`
-	Audit           AuditMetadata   `json:"audit"`
-	TraceID         string          `json:"traceId,omitempty"`
+	ContractVersion string `json:"contractVersion"`
+	ExecutionID     string `json:"executionId"`
+	TaskID          string `json:"taskId"`
+	WorktreeID      string `json:"worktreeId"`
+	ProjectID       string `json:"projectId"`
+	// WorktreeRoot is an internal host boundary. It is intentionally excluded
+	// from JSON serialization so accidental DTO/frontend transport cannot leak
+	// an absolute filesystem path.
+	WorktreeRoot   string          `json:"-"`
+	ToolName       string          `json:"toolName"`
+	Input          json.RawMessage `json:"input"`
+	PolicyDecision PolicyDecision  `json:"policyDecision"`
+	Timeout        time.Duration   `json:"timeout"`
+	Audit          AuditMetadata   `json:"audit"`
+	TraceID        string          `json:"traceId,omitempty"`
 }
 
 // PolicyDecision carries the policy evaluation outcome for this execution.
