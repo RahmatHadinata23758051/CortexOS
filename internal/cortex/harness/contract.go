@@ -290,6 +290,9 @@ type ToolBroker interface {
 	// List returns all registered tool definitions.
 	List() []ToolDefinition
 
+	// ListCapabilities returns all registered capability bindings with policy metadata.
+	ListCapabilities() []CapabilityBinding
+
 	// Execute requests tool execution through the broker.
 	// The broker checks policy, selects the appropriate engine adapter,
 	// executes within sandbox, and returns a ToolResult with evidence.

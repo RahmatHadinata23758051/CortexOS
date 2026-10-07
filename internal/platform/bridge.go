@@ -68,3 +68,23 @@ func (b *Bridge) CancelOrchestraTask(request application.OrchestraTaskRequest) e
 func (b *Bridge) RetryOrchestraTask(request application.OrchestraTaskRequest) error {
 	return b.service.RetryOrchestraTask(b.getContext(), request)
 }
+
+// ListHarnessCapabilities exposes safe Harness capability metadata.
+func (b *Bridge) ListHarnessCapabilities(request application.HarnessCapabilitiesRequest) ([]application.HarnessCapabilitySummary, error) {
+	return b.service.ListHarnessCapabilities(b.getContext(), request)
+}
+
+// ListHarnessWorkers exposes safe Harness worker health summaries.
+func (b *Bridge) ListHarnessWorkers(request application.HarnessWorkersRequest) ([]application.HarnessWorkerSummary, error) {
+	return b.service.ListHarnessWorkers(b.getContext(), request)
+}
+
+// ListActiveHarnessExecutions exposes safe active execution summaries.
+func (b *Bridge) ListActiveHarnessExecutions(request application.HarnessActiveExecutionsRequest) ([]application.HarnessExecutionSummary, error) {
+	return b.service.ListActiveHarnessExecutions(b.getContext(), request)
+}
+
+// GetHarnessEvidence exposes metadata-only, redacted evidence summaries.
+func (b *Bridge) GetHarnessEvidence(request application.HarnessEvidenceRequest) ([]application.HarnessEvidenceSummary, error) {
+	return b.service.GetHarnessEvidence(b.getContext(), request)
+}

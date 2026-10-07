@@ -17,9 +17,11 @@ import (
 )
 
 var (
-	ErrStoreUnavailable = errors.New("harness sqlite store unavailable")
-	ErrOwnership        = errors.New("harness sqlite ownership violation")
-	ErrNotFound         = errors.New("harness sqlite record not found")
+	// These aliases let application error mapping remain stable without exposing
+	// SQLite implementation details through the bridge.
+	ErrStoreUnavailable = harness.ErrStoreUnavailable
+	ErrOwnership        = harness.ErrOwnership
+	ErrNotFound         = harness.ErrNotFound
 )
 
 // Store owns durable Harness state. It deliberately exposes typed operations
@@ -364,6 +366,88 @@ func (s *Store) SaveReservation(ctx context.Context, reservation ReservationStat
 		return fmt.Errorf("save reservation %q: %w", reservation.ID, err)
 	}
 	return nil
+}
+
+// ListWorkers returns internal worker records for the application mapper.
+func (s *Store) ListWorkers(ctx context.Context) ([]WorkerState, error) {
+	if err := checkStore(ctx, s); err != nil {
+		return nil, err
+	}
+	rows, err := s.db.QueryContext(ctx, `SELECT id, instance_id, kind, class, version, schema_version, owner_pid, owner_process_id, registered_at, last_heartbeat_at, status, metadata_json FROM harness_workers ORDER BY registered_at DESC`)
+	if err != nil {
+		return nil, fmt.Errorf("list workers: %w", err)
+	}
+	defer rows.Close()
+	var workers []WorkerState
+	for rows.Next() {
+		var w WorkerState
+		var registered, heartbeat, metadata string
+		if err := rows.Scan(&w.ID, &w.InstanceID, &w.Kind, &w.Class, &w.Version, &w.SchemaVersion, &w.OwnerPID, &w.OwnerProcessID, &registered, &heartbeat, &w.Status, &metadata); err != nil {
+			return nil, err
+		}
+		w.RegisteredAt, _ = time.Parse(time.RFC3339Nano, registered)
+		w.LastHeartbeatAt, _ = time.Parse(time.RFC3339Nano, heartbeat)
+		_ = json.Unmarshal([]byte(metadata), &w.Metadata)
+		workers = append(workers, w)
+	}
+	return workers, rows.Err()
+}
+
+// ListActiveExecutions returns internal active reservation records for the application mapper.
+func (s *Store) ListActiveExecutions(ctx context.Context) ([]ReservationState, error) {
+	if err := checkStore(ctx, s); err != nil {
+		return nil, err
+	}
+	rows, err := s.db.QueryContext(ctx, `SELECT id, task_id, engine_class, priority, memory_mb, cpu_priority, trace_id, owner_worker_id, owner_process_id, created_at, released_at, active FROM harness_reservations WHERE active=1 ORDER BY created_at DESC`)
+	if err != nil {
+		return nil, fmt.Errorf("list active executions: %w", err)
+	}
+	defer rows.Close()
+	var reservations []ReservationState
+	for rows.Next() {
+		var r ReservationState
+		var created string
+		var released sql.NullString
+		if err := rows.Scan(&r.ID, &r.TaskID, &r.EngineClass, &r.Priority, &r.MemoryMB, &r.CPUPriority, &r.TraceID, &r.OwnerWorkerID, &r.OwnerProcessID, &created, &released, &r.Active); err != nil {
+			return nil, err
+		}
+		r.CreatedAt, _ = time.Parse(time.RFC3339Nano, created)
+		if released.Valid && released.String != "" {
+			if t, err := time.Parse(time.RFC3339Nano, released.String); err == nil {
+				r.ReleasedAt = &t
+			}
+		}
+		reservations = append(reservations, r)
+	}
+	return reservations, rows.Err()
+}
+
+// ListCapabilities returns persisted capability bindings.
+func (s *Store) ListCapabilities(ctx context.Context) ([]harness.CapabilityBinding, error) {
+	if err := checkStore(ctx, s); err != nil {
+		return nil, err
+	}
+	rows, err := s.db.QueryContext(ctx, `SELECT capability, description, requires_ask, default_effect FROM harness_capabilities ORDER BY capability`)
+	if err != nil {
+		return nil, fmt.Errorf("list capabilities: %w", err)
+	}
+	defer rows.Close()
+	var caps []harness.CapabilityBinding
+	for rows.Next() {
+		var c harness.CapabilityBinding
+		var requiresAsk int
+		if err := rows.Scan(&c.Capability, &c.Description, &requiresAsk, &c.DefaultEffect); err != nil {
+			return nil, err
+		}
+		c.RequiresAsk = requiresAsk != 0
+		caps = append(caps, c)
+	}
+	return caps, rows.Err()
+}
+
+// ListEvidence is the typed read-only evidence operation used by the application port.
+func (s *Store) ListEvidence(ctx context.Context, executionID string) ([]harness.EvidenceRecord, error) {
+	return s.EvidenceForExecution(ctx, executionID)
 }
 
 func (s *Store) ReleaseReservation(ctx context.Context, reservationID, ownerProcessID string, at time.Time) error {

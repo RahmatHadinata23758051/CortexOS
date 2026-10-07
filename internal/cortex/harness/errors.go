@@ -23,6 +23,11 @@ var (
 	ErrPolicyDeniedEngine  = errors.New("harness: routing policy denied adapter")
 	ErrAdapterUnhealthy    = errors.New("harness: adapter unhealthy")
 	ErrVersionIncompatible = errors.New("harness: adapter version incompatible")
+
+	// Storage/registry errors exposed for bridge mapping
+	ErrStoreUnavailable = errors.New("harness: store unavailable")
+	ErrOwnership        = errors.New("harness: ownership violation")
+	ErrNotFound         = errors.New("harness: record not found")
 )
 
 // ErrorCode is the stable serialized code for a Harness error.

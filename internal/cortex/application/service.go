@@ -29,6 +29,7 @@ type RuntimeSnapshot struct {
 type Service struct {
 	workspace *workspace.Service
 	orchestra OrchestraPort
+	harness   HarnessPort
 }
 
 // NewService creates the minimal Phase 1 application service.
@@ -50,6 +51,16 @@ func NewServiceWithOrchestra(orchestraService OrchestraPort) *Service {
 // NewServiceWithWorkspaceAndOrchestra adds both boundaries.
 func NewServiceWithWorkspaceAndOrchestra(workspaceService *workspace.Service, orchestraService OrchestraPort) *Service {
 	return &Service{workspace: workspaceService, orchestra: orchestraService}
+}
+
+// NewServiceWithHarness adds the optional Harness observability boundary.
+func NewServiceWithHarness(harnessService HarnessPort) *Service {
+	return &Service{harness: harnessService}
+}
+
+// NewServiceWithAll combines Workspace, Orchestra, and Harness application boundaries.
+func NewServiceWithAll(workspaceService *workspace.Service, orchestraService OrchestraPort, harnessService HarnessPort) *Service {
+	return &Service{workspace: workspaceService, orchestra: orchestraService, harness: harnessService}
 }
 
 // GetRuntimeSnapshot returns a deterministic local runtime status.
