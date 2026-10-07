@@ -148,14 +148,24 @@ func TestRedactStringSecrets(t *testing.T) {
 }
 
 func TestRedactStringPaths(t *testing.T) {
-	input := `error opening C:\Users\alice\secret\file.txt`
-	got := RedactString(input)
-
-	if strings.Contains(got, `C:\Users\alice`) {
-		t.Fatalf("redacted string contains absolute path: %q", got)
+	tests := []struct {
+		name  string
+		input string
+		base  string
+	}{
+		{name: "windows", input: `error opening C:\Users\alice\secret\file.txt`, base: ".../file.txt"},
+		{name: "unix", input: "error opening /home/alice/secret/file.txt", base: ".../file.txt"},
 	}
-	if !strings.Contains(got, ".../file.txt") {
-		t.Fatalf("redacted string should preserve basename: %q", got)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := RedactString(tt.input)
+			if strings.Contains(got, "alice") || strings.Contains(got, "/home/") || strings.Contains(got, `C:\Users`) {
+				t.Fatalf("redacted string contains absolute path: %q", got)
+			}
+			if !strings.Contains(got, tt.base) {
+				t.Fatalf("redacted string should preserve basename: %q", got)
+			}
+		})
 	}
 }
 

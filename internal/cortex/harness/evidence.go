@@ -81,25 +81,35 @@ type Redactor interface {
 }
 
 var (
-	secretPatterns = []*regexp.Regexp{
-		regexp.MustCompile(`(?i)(api[_-]?key|secret|token|password|auth|bearer)[\s:="]+([a-zA-Z0-9_\-\.]{8,})`),
-		regexp.MustCompile(`(?i)(ghp_[a-zA-Z0-9]{20,}|github_pat_[a-zA-Z0-9]{20,})`),
-		regexp.MustCompile(`(?i)sk-[a-zA-Z0-9]{20,}`),
-		regexp.MustCompile(`(?i)[a-zA-Z0-9_-]+:[a-zA-Z0-9_-]+@`), // user:pass in URLs
-	}
-	// Windows and Unix path regex patterns for redaction in public summaries
+	kvSecretPattern    = regexp.MustCompile(`(?i)("?(?:api[_-]?key|secret|token|password|passwd|auth|bearer)"?[\s:=]+["']?)([a-zA-Z0-9_\-\.]{8,})(["']?)`)
+	ghpTokenPattern    = regexp.MustCompile(`(?i)(ghp_[a-zA-Z0-9]{20,}|github_pat_[a-zA-Z0-9]{20,})`)
+	skTokenPattern     = regexp.MustCompile(`(?i)sk-[a-zA-Z0-9]{20,}`)
+	urlCredPattern     = regexp.MustCompile(`(?i)[a-zA-Z0-9_-]+:[a-zA-Z0-9_-]+@`)
 	windowsRootPattern = regexp.MustCompile(`(?i)[a-zA-Z]:\\[^\s"']+`)
+	unixRootPattern    = regexp.MustCompile(`(?:/(?:home|Users|tmp|var|etc|usr|opt|root)/[^\s"']+)`)
 )
 
 // RedactString removes secrets and normalizes backslashes from a string.
 func RedactString(s string) string {
 	res := s
-	for _, p := range secretPatterns {
-		res = p.ReplaceAllString(res, "$1=[REDACTED]")
-	}
+	// Redact key-value secrets while preserving delimiters and JSON string quotes
+	res = kvSecretPattern.ReplaceAllString(res, "${1}[REDACTED]${3}")
+	// Redact standalone tokens and credentials
+	res = ghpTokenPattern.ReplaceAllString(res, "[REDACTED]")
+	res = skTokenPattern.ReplaceAllString(res, "[REDACTED]")
+	res = urlCredPattern.ReplaceAllString(res, "[REDACTED]@")
+
 	// Neutralize absolute Windows drive letters to avoid host path leakage
 	res = windowsRootPattern.ReplaceAllStringFunc(res, func(match string) string {
 		parts := strings.Split(strings.ReplaceAll(match, `\`, "/"), "/")
+		if len(parts) > 0 {
+			return ".../" + parts[len(parts)-1]
+		}
+		return "[PATH]"
+	})
+	// Neutralize absolute Unix paths to avoid host path leakage
+	res = unixRootPattern.ReplaceAllStringFunc(res, func(match string) string {
+		parts := strings.Split(match, "/")
 		if len(parts) > 0 {
 			return ".../" + parts[len(parts)-1]
 		}
