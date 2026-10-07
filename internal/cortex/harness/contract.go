@@ -43,6 +43,13 @@ const (
 	CapabilityReview         ToolCapability = "review"
 	CapabilityTestGen        ToolCapability = "test_gen"
 	CapabilityDocGen         ToolCapability = "doc_gen"
+
+	// OMP specialist capabilities
+	CapabilitySpecialist         ToolCapability = "specialist"
+	CapabilityRecovery           ToolCapability = "recovery"
+	CapabilitySecurityAudit      ToolCapability = "security_audit"
+	CapabilityDeepDebug          ToolCapability = "deep_debug"
+	CapabilityArchitectureReview ToolCapability = "architecture_review"
 )
 
 // ToolDefinition describes a registerable tool.
