@@ -266,6 +266,47 @@ func TestHeartbeatOwnership(t *testing.T) {
 	}
 }
 
+func TestApprovalPersistence(t *testing.T) {
+	store := openStore(t)
+	ctx := context.Background()
+	now := time.Date(2026, 10, 8, 10, 0, 0, 0, time.UTC)
+	approval := ApprovalState{
+		ID:          "app-1",
+		ExecutionID: "exec-100",
+		ToolName:    "shell",
+		Action:      "shell",
+		Approver:    "admin-user token=secret-value-12345",
+		Reason:      "manual test approval token=secret-value-12345",
+		GrantedAt:   now,
+	}
+
+	if err := store.SaveApproval(ctx, approval); err != nil {
+		t.Fatalf("save approval: %v", err)
+	}
+
+	got, err := store.GetApproval(ctx, "exec-100")
+	if err != nil {
+		t.Fatalf("get approval: %v", err)
+	}
+	if got.ID != "app-1" || got.ExecutionID != "exec-100" || got.ToolName != "shell" || got.Action != "shell" {
+		t.Fatalf("unexpected approval: %+v", got)
+	}
+	if containsAny(got.Approver, "secret") || containsAny(got.Reason, "secret") {
+		t.Fatalf("approval secrets not redacted: approver=%q reason=%q", got.Approver, got.Reason)
+	}
+
+	// Delete approval
+	if err := store.DeleteApproval(ctx, "exec-100"); err != nil {
+		t.Fatalf("delete approval: %v", err)
+	}
+	if _, err := store.GetApproval(ctx, "exec-100"); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("expected ErrNotFound after delete, got: %v", err)
+	}
+	if err := store.DeleteApproval(ctx, "exec-100"); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("expected ErrNotFound for double delete, got: %v", err)
+	}
+}
+
 func containsAny(value string, needles ...string) bool {
 	for _, needle := range needles {
 		for i := 0; i+len(needle) <= len(value); i++ {
