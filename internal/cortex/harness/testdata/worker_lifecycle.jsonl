@@ -1,0 +1,10 @@
+{"version":"cortexos.worker.v1","type":"handshake","correlationId":"exec-1","sequence":1,"payload":{"workerId":"worker-1","workerVersion":"test-1","protocol":"cortexos.worker.v1"}}
+{"version":"cortexos.worker.v1","type":"capabilities","correlationId":"exec-1","sequence":2,"payload":{"capabilities":["test_run","file_read"]}}
+{"version":"cortexos.worker.v1","type":"health","correlationId":"exec-1","sequence":3,"payload":{"healthy":true,"status":"ready"}}
+{"version":"cortexos.worker.v1","type":"task","correlationId":"exec-1","sequence":4,"payload":{"contractVersion":"cortexos.harness.v1","executionId":"exec-1","taskId":"task-1","worktreeId":"worktree-1","projectId":"project-1","toolName":"test","input":{"command":"go test ./..."},"timeoutMs":5000}}
+{"version":"cortexos.worker.v1","type":"progress","correlationId":"exec-1","sequence":5,"payload":{"phase":"running","percent":40,"message":"tests running"}}
+{"version":"cortexos.worker.v1","type":"evidence","correlationId":"exec-1","sequence":6,"payload":{"evidenceId":"ev-test-1","kind":"command_execution","digest":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","summary":"test command observed"}}
+{"version":"cortexos.worker.v1","type":"diagnostic","correlationId":"exec-1","sequence":7,"payload":{"level":"info","code":"worker.progress","message":"worker continues"}}
+{"version":"cortexos.worker.v1","type":"heartbeat","correlationId":"exec-1","sequence":8,"payload":{"healthy":true,"at":"2026-10-07T12:00:00Z"}}
+{"version":"cortexos.worker.v1","type":"terminal","correlationId":"exec-1","sequence":9,"payload":{"status":"success","message":"worker completed","evidenceIds":["ev-test-1"]}}
+{"version":"cortexos.worker.v1","type":"shutdown","correlationId":"exec-1","sequence":10,"payload":{"reason":"test complete"}}

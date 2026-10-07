@@ -1,0 +1,5 @@
+{"version":"cortexos.worker.v1","type":"handshake","correlationId":"fail-1","sequence":1,"payload":{"workerId":"w-fail","workerVersion":"v1","protocol":"cortexos.worker.v1"}}
+{"version":"cortexos.worker.v1","type":"task","correlationId":"fail-1","sequence":2,"payload":{"contractVersion":"cortexos.harness.v1","executionId":"exec-fail","taskId":"task-f","worktreeId":"wt-f","projectId":"proj-f","toolName":"test","input":{"command":"invalid"},"timeoutMs":5000}}
+{"version":"cortexos.worker.v1","type":"diagnostic","correlationId":"fail-1","sequence":3,"payload":{"level":"error","code":"tool.failed","message":"command not found"}}
+{"version":"cortexos.worker.v1","type":"terminal","correlationId":"fail-1","sequence":4,"payload":{"status":"failure","message":"command exited with code 127","error":{"code":"harness.adapter_failure","message":"command execution failed"},"evidenceIds":[]}}
+{"version":"cortexos.worker.v1","type":"shutdown","correlationId":"fail-1","sequence":5,"payload":{"reason":"failure cleanup"}}

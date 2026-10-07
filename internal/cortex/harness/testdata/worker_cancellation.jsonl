@@ -1,0 +1,5 @@
+{"version":"cortexos.worker.v1","type":"handshake","correlationId":"cancel-1","sequence":1,"payload":{"workerId":"w-cancel","workerVersion":"v1","protocol":"cortexos.worker.v1"}}
+{"version":"cortexos.worker.v1","type":"task","correlationId":"cancel-1","sequence":2,"payload":{"contractVersion":"cortexos.harness.v1","executionId":"exec-cancel","taskId":"task-c","worktreeId":"wt-c","projectId":"proj-c","toolName":"test","input":{"command":"sleep 10"},"timeoutMs":10000}}
+{"version":"cortexos.worker.v1","type":"cancel","correlationId":"cancel-1","sequence":3,"payload":{"reason":"user requested abort"}}
+{"version":"cortexos.worker.v1","type":"terminal","correlationId":"cancel-1","sequence":4,"payload":{"status":"canceled","message":"task stopped on cancel request"}}
+{"version":"cortexos.worker.v1","type":"shutdown","correlationId":"cancel-1","sequence":5,"payload":{"reason":"graceful stop"}}
