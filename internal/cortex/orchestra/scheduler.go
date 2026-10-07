@@ -137,7 +137,7 @@ func (d *Dispatcher) Complete(ctx context.Context, executionID ExecutionID, outc
 		}
 		active.terminal.Store(true)
 		if active.Cancel != nil {
-			active.Cancel()
+			defer active.Cancel()
 		}
 		if err := d.store.SaveTask(ctx, result.Task); err != nil {
 			return err
@@ -201,11 +201,22 @@ func (d *Dispatcher) Cancel(ctx context.Context, taskID TaskID) error {
 }
 
 func (d *Dispatcher) execute(ctx context.Context, execution Execution, envelope ExecutionEnvelope) {
+	completeCtx := context.WithoutCancel(ctx)
 	if err := d.exec.Execute(ctx, envelope); err != nil {
-		_ = d.Complete(ctx, execution.ID, TaskFailed, nil)
+		var evidenceIDs []string
+		if collector, ok := d.exec.(interface{ LastEvidenceIDs(ExecutionID) []string }); ok {
+			evidenceIDs = collector.LastEvidenceIDs(execution.ID)
+		}
+		_ = d.Complete(completeCtx, execution.ID, TaskFailed, evidenceIDs)
 		return
 	}
-	_ = d.Complete(ctx, execution.ID, TaskAwaitingInspection, []string{"worker-evidence"})
+	evidenceIDs := []string{"worker-evidence"}
+	if collector, ok := d.exec.(interface{ LastEvidenceIDs(ExecutionID) []string }); ok {
+		if collected := collector.LastEvidenceIDs(execution.ID); len(collected) > 0 {
+			evidenceIDs = collected
+		}
+	}
+	_ = d.Complete(completeCtx, execution.ID, TaskAwaitingInspection, evidenceIDs)
 }
 
 // VerifyWorkerIdentity checks if a workerID matches the current active worker for an execution.
