@@ -306,6 +306,14 @@ func (s *Service) List(ctx context.Context, filter Filter) ([]Item, error) {
 	return s.store.List(ctx, filter)
 }
 
+// Delete tombstones a knowledge item.
+func (s *Service) Delete(ctx context.Context, id KnowledgeID) error {
+	if err := checkContext(ctx); err != nil {
+		return err
+	}
+	return s.store.Delete(ctx, id)
+}
+
 // PruneExpired delegates to store for removing expired items.
 func (s *Service) PruneExpired(ctx context.Context) (int, error) {
 	if err := checkContext(ctx); err != nil {

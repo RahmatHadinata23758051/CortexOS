@@ -54,11 +54,12 @@ const (
 
 // Provenance captures source attribution, origin authority, and licensing.
 type Provenance struct {
-	SourceKind       string     `json:"sourceKind"`        // e.g., "worker_output", "vault_note", "user_input", "git_commit"
-	SourceURI        string     `json:"sourceUri"`         // relative path or logical source identifier
-	Author           string     `json:"author"`            // human or logical agent attribution
-	Attribution      string     `json:"attribution"`       // copyright or authorship statement
-	License          string     `json:"license,omitempty"` // SPDX or permission grant
+	SourceKind       string     `json:"sourceKind"`           // e.g., "worker_output", "vault_note", "user_input", "git_commit"
+	SourceURI        string     `json:"sourceUri"`            // relative path or logical source identifier
+	SourceHash       string     `json:"sourceHash,omitempty"` // authoritative source content hash
+	Author           string     `json:"author"`               // human or logical agent attribution
+	Attribution      string     `json:"attribution"`          // copyright or authorship statement
+	License          string     `json:"license,omitempty"`    // SPDX or permission grant
 	TaskID           string     `json:"taskId,omitempty"`
 	ExecutionID      string     `json:"executionId,omitempty"`
 	WorkerIdentity   string     `json:"workerIdentity,omitempty"` // evidence tracking only; not an authority handle
