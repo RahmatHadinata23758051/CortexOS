@@ -77,6 +77,20 @@ Invalid permission sets and invalid requests return errors and never produce exe
 
 Bridge consumers should use `Summary`/`JSONSafe` rather than exposing complete definitions. Summary JSON is also validated on decode and rejects forbidden fields and unsupported enum/version values. No bridge DTO includes raw paths, process identity, credentials, provider output, or execution evidence.
 
+## SQLite persistence
+
+The Staff SQLite adapter is available at `internal/cortex/staff/sqlite` and implements the narrow `staff.Store` port. It owns a private SQLite connection and exposes no raw database handle or SQL query surface.
+
+- `Open(ctx, absolutePath)` creates the parent directory with restricted permissions, enables SQLite foreign keys, sets a bounded single-connection pool, and applies versioned migrations.
+- `New(absolutePath)` constructs a lazy store; call `Open(ctx)` before using it.
+- Definitions and their ordered capabilities, permissions, skill references, and memory references are stored in normalized tables and replaced transactionally on update.
+- Reads validate persisted definitions before returning them. Corrupt records fail closed rather than being silently repaired.
+- List methods support workspace, project, role, and combined `Filter` queries. Results are ordered by Staff ID, and collection order is preserved by position.
+- Context cancellation is checked at every public operation and propagated to SQLite transactions and queries.
+- Migrations are recorded in `staff_schema`, applied one transaction at a time, and protected by both an in-process mutex and SQLite locking/busy-timeout behavior. Unknown or non-contiguous migration metadata is rejected.
+
+The adapter is intentionally separate from Workspace, Harness, and Orchestra databases. Deleting a definition cascades to its normalized child rows through foreign-key enforcement.
+
 ## Ports and non-goals
 
 The Staff package owns contracts, validation, policy evaluation, translation boundaries, and narrow interfaces for stores, routers, assignment, memory metadata, and bridge summaries. It does not implement:
