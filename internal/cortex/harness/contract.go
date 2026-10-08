@@ -92,20 +92,64 @@ func isValidKind(k ToolKind) bool {
 	return k == ToolKindNative || k == ToolKindPi || k == ToolKindOMP
 }
 
+// ExecutionContextMetadata carries assignment and provenance facts into Harness.
+// It is advisory context only: policy remains the sole authorization boundary.
+type ExecutionContextMetadata struct {
+	StaffID     string               `json:"staffId,omitempty"`
+	StaffRole   string               `json:"staffRole,omitempty"`
+	WorkspaceID string               `json:"workspaceId,omitempty"`
+	ProjectID   string               `json:"projectId,omitempty"`
+	WorktreeID  string               `json:"worktreeId,omitempty"`
+	Assignment  AssignmentMetadata   `json:"assignment,omitempty"`
+	Provenance  AssignmentProvenance `json:"provenance,omitempty"`
+}
+
+// AssignmentMetadata records how a logical Staff member was assigned. It carries
+// no worker/process identity and cannot authorize execution.
+type AssignmentMetadata struct {
+	AssignmentID string    `json:"assignmentId,omitempty"`
+	AssignedAt   time.Time `json:"assignedAt,omitempty"`
+	Source       string    `json:"source,omitempty"`
+}
+
+// AssignmentProvenance identifies the governing task and trace that produced
+// the assignment, allowing evidence to be attributed without trusting output.
+type AssignmentProvenance struct {
+	TaskID      string `json:"taskId,omitempty"`
+	ExecutionID string `json:"executionId,omitempty"`
+	TraceID     string `json:"traceId,omitempty"`
+}
+
+// AdvisoryMemoryContext is bounded, redacted context. It never grants tools,
+// permissions, or success/merge authority.
+type AdvisoryMemoryContext struct {
+	ID         string               `json:"id"`
+	Kind       string               `json:"kind"`
+	Content    string               `json:"content"`
+	Source     string               `json:"source,omitempty"`
+	Provenance AssignmentProvenance `json:"provenance,omitempty"`
+}
+
 // ToolRequest is the execution envelope for a tool invocation.
 // Path-free, shell-free, secret-free. All paths must be worktree-relative.
 type ToolRequest struct {
-	ContractVersion string          `json:"contractVersion"`
-	ExecutionID     string          `json:"executionId"`
-	TaskID          string          `json:"taskId"`
-	WorktreeID      string          `json:"worktreeId"`
-	ToolName        string          `json:"toolName"`
-	Action          string          `json:"action,omitempty"`
-	Resource        string          `json:"resource,omitempty"`
-	Input           json.RawMessage `json:"input"`
-	Timeout         time.Duration   `json:"timeout"`
-	Audit           AuditMetadata   `json:"audit,omitempty"`
-	TraceID         string          `json:"traceId,omitempty"`
+	ContractVersion  string                    `json:"contractVersion"`
+	ExecutionID      string                    `json:"executionId"`
+	TaskID           string                    `json:"taskId"`
+	ProjectID        string                    `json:"projectId,omitempty"`
+	WorktreeID       string                    `json:"worktreeId"`
+	ToolName         string                    `json:"toolName"`
+	Action           string                    `json:"action,omitempty"`
+	Resource         string                    `json:"resource,omitempty"`
+	Input            json.RawMessage           `json:"input"`
+	Timeout          time.Duration             `json:"timeout"`
+	Audit            AuditMetadata             `json:"audit,omitempty"`
+	TraceID          string                    `json:"traceId,omitempty"`
+	ExecutionContext *ExecutionContextMetadata `json:"executionContext,omitempty"`
+	// StaffContext is the governed logical assignment context. It is advisory.
+	StaffContext   *ExecutionContextMetadata `json:"staffContext,omitempty"`
+	SkillInjection *SkillInjection           `json:"skillInjection,omitempty"`
+	MemoryContext  []AdvisoryMemoryContext   `json:"memoryContext,omitempty"`
 }
 
 // Validate checks the request for required fields.
@@ -221,17 +265,23 @@ type ExecutionEnvelope struct {
 	// WorktreeRoot is an internal host boundary. It is intentionally excluded
 	// from JSON serialization so accidental DTO/frontend transport cannot leak
 	// an absolute filesystem path.
-	WorktreeRoot      string          `json:"-"`
-	ToolName          string          `json:"toolName"`
-	Input             json.RawMessage `json:"input"`
-	PolicyDecision    PolicyDecision  `json:"policyDecision"`
-	Timeout           time.Duration   `json:"timeout"`
-	Audit             AuditMetadata   `json:"audit"`
-	TraceID           string          `json:"traceId,omitempty"`
+	WorktreeRoot   string          `json:"-"`
+	ToolName       string          `json:"toolName"`
+	Input          json.RawMessage `json:"input"`
+	PolicyDecision PolicyDecision  `json:"policyDecision"`
+	Timeout        time.Duration   `json:"timeout"`
+	Audit          AuditMetadata   `json:"audit"`
+	TraceID        string          `json:"traceId,omitempty"`
 	// SkillInjection carries the resolved, sanitized skill prompt for this execution.
 	// It is nil when no skill is applicable or when the skill requires Ask approval
 	// that has not been granted.
 	SkillInjection *SkillInjection `json:"skillInjection,omitempty"`
+	// StaffContext carries advisory logical Staff definition and assignment metadata.
+	StaffContext *ExecutionContextMetadata `json:"staffContext,omitempty"`
+	// MemoryContext carries advisory memory context entries.
+	MemoryContext []AdvisoryMemoryContext `json:"memoryContext,omitempty"`
+	// SelectedAdapter records the name/descriptor of the selected Harness adapter.
+	SelectedAdapter string `json:"selectedAdapter,omitempty"`
 }
 
 // PolicyDecision carries the policy evaluation outcome for this execution.

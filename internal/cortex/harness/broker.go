@@ -427,12 +427,24 @@ func (b *Broker) Execute(ctx ExecutionContext, request ToolRequest) (ToolResult,
 	if sandbox != nil {
 		worktreeRoot = sandbox.WorktreeRoot()
 	}
+	projectID := request.ProjectID
+	if projectID == "" {
+		projectID = request.WorktreeID
+	}
+	staffContext := request.StaffContext
+	if staffContext == nil {
+		staffContext = request.ExecutionContext
+	}
 	envelope := ExecutionEnvelope{
 		ContractVersion: HarnessContractVersion,
 		ExecutionID:     request.ExecutionID,
 		TaskID:          request.TaskID,
 		WorktreeID:      request.WorktreeID,
-		ProjectID:       request.WorktreeID, // Use WorktreeID as ProjectID fallback; app bridge sets correctly
+		ProjectID:       projectID,
+		StaffContext:    staffContext,
+		SkillInjection:  request.SkillInjection,
+		MemoryContext:   append([]AdvisoryMemoryContext(nil), request.MemoryContext...),
+		SelectedAdapter: selection.Descriptor.Identity.Name,
 		WorktreeRoot:    worktreeRoot,
 		ToolName:        request.ToolName,
 		Input:           request.Input,
@@ -577,6 +589,14 @@ func (b *Broker) recordAudit(req ToolRequest, kind EvidenceKind, event string, r
 		"executionId": req.ExecutionID,
 		"taskId":      req.TaskID,
 		"worktreeId":  req.WorktreeID,
+		"projectId":   req.ProjectID,
+	}
+	if req.ExecutionContext != nil {
+		payload["staffId"] = req.ExecutionContext.StaffID
+		payload["staffRole"] = req.ExecutionContext.StaffRole
+		payload["workspaceId"] = req.ExecutionContext.WorkspaceID
+		payload["assignmentId"] = req.ExecutionContext.Assignment.AssignmentID
+		payload["assignmentSource"] = req.ExecutionContext.Assignment.Source
 	}
 	ruleID := ""
 	if decision != nil {

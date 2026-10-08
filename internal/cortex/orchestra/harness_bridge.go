@@ -18,12 +18,18 @@ import (
 // streams evidence back to Orchestra events via TaskStore.AppendEvent, and
 // coordinates terminal outcomes under completion/cancellation races.
 type HarnessBridge struct {
-	mu           sync.Mutex
-	broker       harness.ToolBroker
-	store        TaskStore
-	worktreeRoot string
-	clock        func() time.Time
-	lastEvidence map[ExecutionID][]string
+	mu              sync.Mutex
+	broker          harness.ToolBroker
+	store           TaskStore
+	worktreeRoot    string
+	clock           func() time.Time
+	lastEvidence    map[ExecutionID][]string
+	contextProvider EnvelopeProvider
+}
+
+// EnvelopeProvider prepares governed Staff context without granting authority.
+type EnvelopeProvider interface {
+	Prepare(context.Context, Task, Execution) (ExecutionEnvelope, error)
 }
 
 // NewHarnessBridge creates a new bridge connecting Orchestra to Harness.
@@ -35,6 +41,23 @@ func NewHarnessBridge(broker harness.ToolBroker, store TaskStore, worktreeRoot s
 		clock:        time.Now,
 		lastEvidence: make(map[ExecutionID][]string),
 	}
+}
+
+// SetContextProvider adds governed advisory context to dispatch envelopes.
+func (h *HarnessBridge) SetContextProvider(provider EnvelopeProvider) { h.contextProvider = provider }
+
+// PrepareExecution lets the bridge supply governed context while preserving the
+// default envelope shape for callers that do not configure a provider.
+func (h *HarnessBridge) PrepareExecution(ctx context.Context, task Task, execution Execution) (ExecutionEnvelope, error) {
+	envelope := ExecutionEnvelope{TaskID: task.ID, ProjectID: task.ProjectID, WorktreeID: task.WorktreeID, Attempt: execution.Attempt, Title: task.Title, TraceID: string(execution.ID)}
+	if h.contextProvider != nil {
+		prepared, err := h.contextProvider.Prepare(ctx, task, execution)
+		if err != nil {
+			return ExecutionEnvelope{}, err
+		}
+		return prepared, nil
+	}
+	return envelope, nil
 }
 
 // LastEvidenceIDs retrieves the evidence IDs recorded for an execution.
@@ -78,18 +101,44 @@ func (h *HarnessBridge) Execute(ctx context.Context, envelope ExecutionEnvelope)
 		timeout = def.Timeout
 	}
 
+	traceID := envelope.TraceID
+	if traceID == "" {
+		traceID = fmt.Sprintf("orch-%s-%d", task.ID, envelope.Attempt)
+	}
 	request := harness.ToolRequest{
 		ContractVersion: harness.HarnessContractVersion,
 		ExecutionID:     string(execution.ID),
 		TaskID:          string(task.ID),
+		ProjectID:       task.ProjectID,
 		WorktreeID:      envelope.WorktreeID,
 		ToolName:        toolName,
 		Input:           h.buildInput(task, envelope),
 		Timeout:         timeout,
 		Audit: harness.AuditMetadata{
-			Actor: "orchestra-dispatcher",
+			Actor:         "orchestra-dispatcher",
+			TraceID:       traceID,
+			CorrelationID: string(execution.ID),
 		},
-		TraceID: fmt.Sprintf("orch-%s-%d", task.ID, envelope.Attempt),
+		TraceID:          traceID,
+		ExecutionContext: h.executionContext(envelope, execution, traceID),
+		SkillInjection:   envelope.Skill,
+	}
+	if len(envelope.Memory) > 0 {
+		var mems []harness.AdvisoryMemoryContext
+		for _, m := range envelope.Memory {
+			mems = append(mems, harness.AdvisoryMemoryContext{
+				ID:      m.ID,
+				Kind:    m.Kind,
+				Content: m.Content,
+				Source:  m.Source,
+				Provenance: harness.AssignmentProvenance{
+					TaskID:      m.Provenance.TaskID,
+					ExecutionID: m.Provenance.ExecutionID,
+					TraceID:     m.Provenance.TraceID,
+				},
+			})
+		}
+		request.MemoryContext = mems
 	}
 
 	// Create execution context with trace ID
@@ -112,6 +161,31 @@ func (h *HarnessBridge) Execute(ctx context.Context, envelope ExecutionEnvelope)
 	}
 
 	return nil
+}
+
+func (h *HarnessBridge) executionContext(envelope ExecutionEnvelope, execution Execution, traceID string) *harness.ExecutionContextMetadata {
+	metadata := &harness.ExecutionContextMetadata{
+		WorkspaceID: envelope.WorkspaceID,
+		ProjectID:   envelope.ProjectID,
+		WorktreeID:  envelope.WorktreeID,
+		Provenance:  harness.AssignmentProvenance{TaskID: string(execution.TaskID), ExecutionID: string(execution.ID), TraceID: traceID},
+	}
+	if envelope.Staff != nil {
+		metadata.StaffID = string(envelope.Staff.ID)
+		metadata.StaffRole = string(envelope.Staff.Role)
+		if metadata.WorkspaceID == "" {
+			metadata.WorkspaceID = string(envelope.Staff.Workspace.WorkspaceID)
+		}
+		if metadata.ProjectID == "" {
+			metadata.ProjectID = string(envelope.Staff.Workspace.ProjectID)
+		}
+	}
+	metadata.Assignment = harness.AssignmentMetadata{
+		AssignmentID: envelope.Assignment.AssignmentID,
+		Source:       envelope.Assignment.Source,
+		AssignedAt:   envelope.Assignment.AssignedAt,
+	}
+	return metadata
 }
 
 // streamEvidence writes Harness evidence records as Orchestra TaskEvents.

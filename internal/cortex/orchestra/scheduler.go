@@ -7,6 +7,9 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/RahmatHadinata23758051/CortexOS/internal/cortex/harness"
+	"github.com/RahmatHadinata23758051/CortexOS/internal/cortex/staff"
 )
 
 var (
@@ -19,12 +22,25 @@ type Executor interface {
 	Execute(context.Context, ExecutionEnvelope) error
 }
 
+// ExecutionContextProvider enriches a dispatch with governed logical Staff,
+// skill, memory, and assignment context. It cannot grant Harness permissions.
+type ExecutionContextProvider interface {
+	PrepareExecution(context.Context, Task, Execution) (ExecutionEnvelope, error)
+}
+
 type ExecutionEnvelope struct {
-	TaskID     TaskID `json:"taskId"`
-	ProjectID  string `json:"projectId"`
-	WorktreeID string `json:"worktreeId"`
-	Attempt    int    `json:"attempt"`
-	Title      string `json:"title"`
+	TaskID          TaskID                  `json:"taskId"`
+	ProjectID       string                  `json:"projectId"`
+	WorktreeID      string                  `json:"worktreeId"`
+	WorkspaceID     string                  `json:"workspaceId,omitempty"`
+	Attempt         int                     `json:"attempt"`
+	Title           string                  `json:"title"`
+	TraceID         string                  `json:"traceId,omitempty"`
+	Staff           *staff.Definition       `json:"staff,omitempty"`
+	Skill           *harness.SkillInjection `json:"skill,omitempty"`
+	Memory          []AdvisoryMemory        `json:"memory,omitempty"`
+	Assignment      AssignmentProvenance    `json:"assignment,omitempty"`
+	SelectedAdapter string                  `json:"selectedAdapter,omitempty"`
 }
 
 type Dispatcher struct {
@@ -98,7 +114,17 @@ func (d *Dispatcher) Dispatch(ctx context.Context, taskID TaskID) (Execution, er
 	active := &activeExecution{Execution: execution, Cancel: cancel, WorkerID: d.workerID}
 	d.active[taskID] = active
 	if d.exec != nil {
-		go d.execute(execCtx, execution, ExecutionEnvelope{TaskID: result.Task.ID, ProjectID: result.Task.ProjectID, WorktreeID: result.Task.WorktreeID, Attempt: result.Task.AttemptCount, Title: result.Task.Title})
+		envelope := ExecutionEnvelope{TaskID: result.Task.ID, ProjectID: result.Task.ProjectID, WorktreeID: result.Task.WorktreeID, Attempt: result.Task.AttemptCount, Title: result.Task.Title, TraceID: string(execution.ID)}
+		if provider, ok := d.exec.(ExecutionContextProvider); ok {
+			prepared, prepareErr := provider.PrepareExecution(execCtx, result.Task, execution)
+			if prepareErr != nil {
+				cancel()
+				delete(d.active, taskID)
+				return Execution{}, prepareErr
+			}
+			envelope = prepared
+		}
+		go d.execute(execCtx, execution, envelope)
 	}
 	return execution, nil
 }
