@@ -88,3 +88,38 @@ func (b *Bridge) ListActiveHarnessExecutions(request application.HarnessActiveEx
 func (b *Bridge) GetHarnessEvidence(request application.HarnessEvidenceRequest) ([]application.HarnessEvidenceSummary, error) {
 	return b.service.GetHarnessEvidence(b.getContext(), request)
 }
+
+// GetStaffSummary exposes a safe logical Staff summary without process identity or secrets.
+func (b *Bridge) GetStaffSummary(request application.StaffRequest) (application.StaffSummary, error) {
+	return b.service.GetStaffSummary(b.getContext(), request)
+}
+
+// ListStaffSummaries exposes safe Staff observability summaries.
+func (b *Bridge) ListStaffSummaries(request application.StaffListRequest) ([]application.StaffSummary, error) {
+	return b.service.ListStaffSummaries(b.getContext(), request)
+}
+
+// ListStaffByWorkspace exposes Staff summaries scoped to an approved workspace.
+func (b *Bridge) ListStaffByWorkspace(request application.StaffByWorkspaceRequest) ([]application.StaffSummary, error) {
+	return b.service.ListStaffByWorkspace(b.getContext(), request)
+}
+
+// ListStaffCapabilities exposes safe Staff capability metadata.
+func (b *Bridge) ListStaffCapabilities(request application.StaffCapabilitiesRequest) ([]application.StaffCapabilitySummary, error) {
+	return b.service.ListStaffCapabilities(b.getContext(), request)
+}
+
+// GetStaffAssignment exposes only logical workspace assignment identifiers.
+func (b *Bridge) GetStaffAssignment(request application.StaffAssignmentRequest) (application.StaffAssignmentSummary, error) {
+	return b.service.GetStaffAssignment(b.getContext(), request)
+}
+
+// ListKnowledgeSources exposes safe knowledge source summaries.
+func (b *Bridge) ListKnowledgeSources(request application.KnowledgeSourcesRequest) ([]application.KnowledgeSourceSummary, error) {
+	return b.service.ListKnowledgeSources(b.getContext(), request)
+}
+
+// QueryKnowledge exposes bounded, metadata-safe retrieval results.
+func (b *Bridge) QueryKnowledge(request application.KnowledgeQueryRequest) ([]application.KnowledgeQueryResult, error) {
+	return b.service.QueryKnowledge(b.getContext(), request)
+}
