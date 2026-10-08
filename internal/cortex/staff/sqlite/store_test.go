@@ -1233,4 +1233,3 @@ func TestApplyMigrationsValidation(t *testing.T) {
 		t.Fatal("expected error with nil DB")
 	}
 }
-
