@@ -171,13 +171,10 @@ func TestBAN113_VerticalSlice_StaffContextReachesHarnessEnvelope(t *testing.T) {
 		t.Fatalf("dispatch failed: %v", err)
 	}
 
-	// Wait for async execution
-	time.Sleep(200 * time.Millisecond)
-
-	// Verify task transitioned to AwaitingInspection (not Success - Inspector must approve)
-	saved, err := store.GetTask(ctx, task.ID)
+	// Wait for async execution without relying on a fixed scheduler delay.
+	saved, err := waitForTaskStatus(ctx, store, task.ID, TaskAwaitingInspection, 2*time.Second)
 	if err != nil {
-		t.Fatalf("get task: %v", err)
+		t.Fatalf("wait for task inspection state: %v", err)
 	}
 	if saved.Status != TaskAwaitingInspection {
 		t.Fatalf("expected TaskAwaitingInspection (Inspector gate), got %s", saved.Status)
@@ -322,11 +319,9 @@ func TestBAN113_UntrustedWorkerResultCannotBecomeSuccess(t *testing.T) {
 		t.Fatalf("dispatch: %v", err)
 	}
 
-	time.Sleep(200 * time.Millisecond)
-
-	saved, err := store.GetTask(ctx, task.ID)
+	saved, err := waitForTaskStatus(ctx, store, task.ID, TaskAwaitingInspection, 2*time.Second)
 	if err != nil {
-		t.Fatalf("get task: %v", err)
+		t.Fatalf("wait for task inspection state: %v", err)
 	}
 
 	// Task MUST be in AwaitingInspection, NOT TaskSuccess
@@ -425,9 +420,10 @@ func TestBAN113_PolicyDenialIsNotRetryable(t *testing.T) {
 		t.Fatalf("dispatch: %v", err)
 	}
 
-	time.Sleep(100 * time.Millisecond)
-
-	saved, _ := store.GetTask(ctx, task.ID)
+	saved, err := waitForTaskStatus(ctx, store, task.ID, TaskFailed, 2*time.Second)
+	if err != nil {
+		t.Fatalf("wait for task failed state: %v", err)
+	}
 	if saved.Status != TaskFailed {
 		t.Fatalf("expected TaskFailed after policy denial, got %s", saved.Status)
 	}
@@ -565,17 +561,13 @@ func TestBAN113_CancellationNoDuplicateAuthority(t *testing.T) {
 	}
 
 	// Cancel immediately
-	time.Sleep(10 * time.Millisecond)
 	if err := dispatcher.Cancel(ctx, task.ID); err != nil {
 		t.Fatalf("cancel: %v", err)
 	}
 
-	// Wait for worker to finish
-	time.Sleep(150 * time.Millisecond)
-
-	saved, err := store.GetTask(ctx, task.ID)
+	saved, err := waitForTaskStatus(ctx, store, task.ID, TaskCanceled, 2*time.Second)
 	if err != nil {
-		t.Fatalf("get task: %v", err)
+		t.Fatalf("wait for task canceled state: %v", err)
 	}
 
 	// Task MUST be Canceled, not Success
@@ -705,10 +697,7 @@ func TestBAN113_RetryReassignmentIncrementsAttempt(t *testing.T) {
 	if err != nil {
 		t.Fatalf("dispatch 1: %v", err)
 	}
-	time.Sleep(100 * time.Millisecond)
-
-	// Verify task is in Failed state (awaiting retry)
-	saved, err := store.GetTask(ctx, task.ID)
+	saved, err := waitForTaskStatus(ctx, store, task.ID, TaskFailed, 2*time.Second)
 	if err != nil {
 		t.Fatalf("get task after attempt 1: %v", err)
 	}
@@ -845,9 +834,10 @@ func TestBAN113_SkillsAndMemoryCannotOverridePolicyDenial(t *testing.T) {
 		t.Fatalf("dispatch: %v", err)
 	}
 
-	time.Sleep(100 * time.Millisecond)
-
-	saved, _ := store.GetTask(ctx, task.ID)
+	saved, err := waitForTaskStatus(ctx, store, task.ID, TaskFailed, 2*time.Second)
+	if err != nil {
+		t.Fatalf("wait for task failed state: %v", err)
+	}
 	if saved.Status != TaskFailed {
 		t.Fatalf("expected TaskFailed after policy denial (skills/memory cannot override), got %s", saved.Status)
 	}
@@ -872,6 +862,25 @@ func TestBAN113_SkillsAndMemoryCannotOverridePolicyDenial(t *testing.T) {
 	}
 
 	t.Log("Policy denial verified: skills and memory cannot override Harness policy boundary")
+}
+
+func waitForTaskStatus(ctx context.Context, store TaskStore, taskID TaskID, expected TaskStatus, timeout time.Duration) (Task, error) {
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		task, err := store.GetTask(ctx, taskID)
+		if err != nil {
+			return Task{}, err
+		}
+		if task.Status == expected {
+			return task, nil
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	task, err := store.GetTask(ctx, taskID)
+	if err != nil {
+		return Task{}, err
+	}
+	return task, fmt.Errorf("timed out waiting for task %s to reach %s; got %s", taskID, expected, task.Status)
 }
 
 // Helper test stores
