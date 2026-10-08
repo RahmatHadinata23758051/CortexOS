@@ -21,6 +21,10 @@ const (
 	ErrUnavailableStaff   ErrorCode = "staff.unavailable"
 	ErrInvalidAssignment  ErrorCode = "staff.invalid_assignment"
 	ErrInvalidPermission  ErrorCode = "staff.invalid_permission"
+	ErrCapabilityMismatch ErrorCode = "staff.capability_mismatch"
+	ErrWorkspaceMismatch  ErrorCode = "staff.workspace_mismatch"
+	ErrStaffBusy          ErrorCode = "staff.busy"
+	ErrResourceMismatch   ErrorCode = "staff.resource_mismatch"
 	ErrCanceled           ErrorCode = "staff.canceled"
 	ErrInternal           ErrorCode = "staff.internal"
 )

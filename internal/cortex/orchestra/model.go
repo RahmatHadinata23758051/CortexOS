@@ -45,20 +45,24 @@ const (
 )
 
 type Task struct {
-	ID                 TaskID        `json:"id"`
-	WorkspaceID        string        `json:"workspaceId,omitempty"`
-	ProjectID          string        `json:"projectId"`
-	WorktreeID         string        `json:"worktreeId"`
-	AssignedStaffID    staff.StaffID `json:"assignedStaffId,omitempty"`
-	Title              string        `json:"title"`
-	AcceptanceCriteria []string      `json:"acceptanceCriteria"`
-	Dependencies       []TaskID      `json:"dependencies"`
-	Status             TaskStatus    `json:"status"`
-	AttemptCount       int           `json:"attemptCount"`
-	MaxAttempts        int           `json:"maxAttempts"`
-	CreatedAt          time.Time     `json:"createdAt"`
-	UpdatedAt          time.Time     `json:"updatedAt"`
-	SchemaVersion      string        `json:"schemaVersion"`
+	ID                   TaskID                   `json:"id"`
+	WorkspaceID          string                   `json:"workspaceId,omitempty"`
+	ProjectID            string                   `json:"projectId"`
+	WorktreeID           string                   `json:"worktreeId"`
+	AssignedStaffID      staff.StaffID            `json:"assignedStaffId,omitempty"`
+	Title                string                   `json:"title"`
+	AcceptanceCriteria   []string                 `json:"acceptanceCriteria"`
+	Dependencies         []TaskID                 `json:"dependencies"`
+	Status               TaskStatus               `json:"status"`
+	AttemptCount         int                      `json:"attemptCount"`
+	MaxAttempts          int                      `json:"maxAttempts"`
+	Priority             staff.AssignmentPriority `json:"priority,omitempty"`
+	RequiredCapabilities []staff.Capability       `json:"requiredCapabilities,omitempty"`
+	Action               string                   `json:"action,omitempty"`
+	Resource             string                   `json:"resource,omitempty"`
+	CreatedAt            time.Time                `json:"createdAt"`
+	UpdatedAt            time.Time                `json:"updatedAt"`
+	SchemaVersion        string                   `json:"schemaVersion"`
 }
 
 type Execution struct {
@@ -74,15 +78,19 @@ type Execution struct {
 type EventType string
 
 const (
-	EventTaskCreated        EventType = "task.created"
-	EventTaskValidated      EventType = "task.validated"
-	EventTaskDispatched     EventType = "task.dispatched"
-	EventEvidenceCollected  EventType = "evidence.collected"
-	EventInspectionAccepted EventType = "inspection.accepted"
-	EventInspectionRejected EventType = "inspection.rejected"
-	EventTaskCanceled       EventType = "task.canceled"
-	EventTaskRetryRequested EventType = "task.retryRequested"
-	EventExecutionFailed    EventType = "execution.failed"
+	EventTaskCreated            EventType = "task.created"
+	EventTaskValidated          EventType = "task.validated"
+	EventTaskDispatched         EventType = "task.dispatched"
+	EventTaskAssigned           EventType = "task.assigned"
+	EventTaskAssignmentRejected EventType = "task.assignmentRejected"
+	EventTaskQueued             EventType = "task.queued"
+	EventTaskReassigned         EventType = "task.reassigned"
+	EventEvidenceCollected      EventType = "evidence.collected"
+	EventInspectionAccepted     EventType = "inspection.accepted"
+	EventInspectionRejected     EventType = "inspection.rejected"
+	EventTaskCanceled           EventType = "task.canceled"
+	EventTaskRetryRequested     EventType = "task.retryRequested"
+	EventExecutionFailed        EventType = "execution.failed"
 )
 
 type TaskEvent struct {

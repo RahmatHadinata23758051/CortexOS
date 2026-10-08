@@ -16,6 +16,7 @@ var (
 	ErrDuplicateDispatch = errors.New("orchestra: duplicate dispatch")
 	ErrWorkerBusy        = errors.New("orchestra: worker is busy")
 	ErrInvalidDispatch   = errors.New("orchestra: invalid dispatch")
+	ErrAssignmentQueued  = errors.New("orchestra: task assignment queued, awaiting staff availability")
 )
 
 type Executor interface {
@@ -44,11 +45,12 @@ type ExecutionEnvelope struct {
 }
 
 type Dispatcher struct {
-	mu       sync.Mutex
-	store    TaskStore
-	exec     Executor
-	active   map[TaskID]*activeExecution
-	workerID string
+	mu         sync.Mutex
+	store      TaskStore
+	exec       Executor
+	active     map[TaskID]*activeExecution
+	workerID   string
+	staffSched *staff.Scheduler
 }
 
 type activeExecution struct {
@@ -64,6 +66,41 @@ func NewDispatcher(store TaskStore, exec Executor, workerID ...string) *Dispatch
 		id = workerID[0]
 	}
 	return &Dispatcher{store: store, exec: exec, active: make(map[TaskID]*activeExecution), workerID: id}
+}
+
+// SetStaffScheduler attaches a staff scheduler for availability-aware dispatch.
+// The dispatcher will emit assignment events for audit and will retry queued
+// tasks when staff becomes available.
+func (d *Dispatcher) SetStaffScheduler(sched *staff.Scheduler) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.staffSched = sched
+	if sched != nil {
+		sched.SetEventSink(func(event staff.AssignmentEvent) {
+			taskID := TaskID(event.Assignment.Request.TaskID)
+			var eventType EventType
+			switch event.Type {
+			case staff.EventAssignmentQueued:
+				eventType = EventTaskQueued
+			case staff.EventAssignmentAssigned:
+				eventType = EventTaskAssigned
+			case staff.EventAssignmentRejected:
+				eventType = EventTaskAssignmentRejected
+			case staff.EventAssignmentReassigned:
+				eventType = EventTaskReassigned
+			case staff.EventAssignmentCanceled:
+				eventType = EventTaskCanceled
+			case staff.EventAssignmentReleased:
+				return // Clean logical release, no duplicate task event
+			default:
+				return // Unknown event type, skip
+			}
+			_ = d.store.AppendEvent(context.Background(), TaskEvent{
+				TaskID: taskID, Type: eventType, Message: event.Assignment.Reason,
+				OccurredAt: event.OccurredAt,
+			})
+		})
+	}
 }
 
 func (d *Dispatcher) Dispatch(ctx context.Context, taskID TaskID) (Execution, error) {
@@ -120,6 +157,7 @@ func (d *Dispatcher) Dispatch(ctx context.Context, taskID TaskID) (Execution, er
 			if prepareErr != nil {
 				cancel()
 				delete(d.active, taskID)
+				_ = d.store.SaveTask(ctx, task)
 				return Execution{}, prepareErr
 			}
 			envelope = prepared
@@ -178,6 +216,9 @@ func (d *Dispatcher) Complete(ctx context.Context, executionID ExecutionID, outc
 		if err := d.store.AppendEvent(ctx, TaskEvent{TaskID: task.ID, ExecutionID: executionID, Type: eventType, From: task.Status, To: to, EvidenceIDs: evidenceIDs}); err != nil {
 			return err
 		}
+		if d.staffSched != nil {
+			_ = d.staffSched.Release(context.WithoutCancel(ctx), string(task.ID))
+		}
 		delete(d.active, taskID)
 		return nil
 	}
@@ -221,6 +262,9 @@ func (d *Dispatcher) Cancel(ctx context.Context, taskID TaskID) error {
 	}
 	if err := d.store.AppendEvent(ctx, TaskEvent{TaskID: task.ID, Type: EventTaskCanceled, From: task.Status, To: result.Task.Status}); err != nil {
 		return err
+	}
+	if d.staffSched != nil {
+		_ = d.staffSched.Cancel(context.WithoutCancel(ctx), string(task.ID))
 	}
 	delete(d.active, taskID)
 	return nil
