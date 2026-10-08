@@ -30,6 +30,8 @@ type Service struct {
 	workspace *workspace.Service
 	orchestra OrchestraPort
 	harness   HarnessPort
+	staff     StaffPort
+	knowledge KnowledgePort
 }
 
 // NewService creates the minimal Phase 1 application service.
@@ -61,6 +63,21 @@ func NewServiceWithHarness(harnessService HarnessPort) *Service {
 // NewServiceWithAll combines Workspace, Orchestra, and Harness application boundaries.
 func NewServiceWithAll(workspaceService *workspace.Service, orchestraService OrchestraPort, harnessService HarnessPort) *Service {
 	return &Service{workspace: workspaceService, orchestra: orchestraService, harness: harnessService}
+}
+
+// NewServiceWithStaff adds the optional Staff observability boundary.
+func NewServiceWithStaff(staffService StaffPort) *Service {
+	return &Service{staff: staffService}
+}
+
+// NewServiceWithKnowledge adds the optional Knowledge observability boundary.
+func NewServiceWithKnowledge(knowledgeService KnowledgePort) *Service {
+	return &Service{knowledge: knowledgeService}
+}
+
+// NewServiceWithFull combines all available application boundaries.
+func NewServiceWithFull(workspaceService *workspace.Service, orchestraService OrchestraPort, harnessService HarnessPort, staffService StaffPort, knowledgeService KnowledgePort) *Service {
+	return &Service{workspace: workspaceService, orchestra: orchestraService, harness: harnessService, staff: staffService, knowledge: knowledgeService}
 }
 
 // GetRuntimeSnapshot returns a deterministic local runtime status.
