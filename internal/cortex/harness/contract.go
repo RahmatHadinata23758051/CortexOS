@@ -192,8 +192,26 @@ func (e *ToolError) IsRetriable() bool {
 	}
 }
 
+// SkillInjection is a sanitized, authority-neutral skill context attached to an
+// execution envelope. It carries no permissions or execution authority; Harness
+// policy remains the sole source of tool authorization.
+type SkillInjection struct {
+	SkillID         string    `json:"skillId"`
+	SkillVersion    string    `json:"skillVersion"`
+	SystemPrompt    string    `json:"systemPrompt"`
+	UserPrompt      string    `json:"userPrompt"`
+	Capabilities    []string  `json:"capabilities,omitempty"`
+	RequiresAsk     bool      `json:"requiresAsk"`
+	MaxContextChars int       `json:"maxContextChars"`
+	SourceURI       string    `json:"sourceUri,omitempty"`
+	Author          string    `json:"author,omitempty"`
+	License         string    `json:"license,omitempty"`
+	InjectedAt      time.Time `json:"injectedAt"`
+	ContractVersion string    `json:"contractVersion"`
+}
+
 // ExecutionEnvelope is the complete execution context passed to an engine adapter.
-// It carries task, worktree, policy decision, and timeout/cancellation context.
+// It carries task, worktree, policy decision, skill injection, and timeout/cancellation context.
 type ExecutionEnvelope struct {
 	ContractVersion string `json:"contractVersion"`
 	ExecutionID     string `json:"executionId"`
@@ -203,13 +221,17 @@ type ExecutionEnvelope struct {
 	// WorktreeRoot is an internal host boundary. It is intentionally excluded
 	// from JSON serialization so accidental DTO/frontend transport cannot leak
 	// an absolute filesystem path.
-	WorktreeRoot   string          `json:"-"`
-	ToolName       string          `json:"toolName"`
-	Input          json.RawMessage `json:"input"`
-	PolicyDecision PolicyDecision  `json:"policyDecision"`
-	Timeout        time.Duration   `json:"timeout"`
-	Audit          AuditMetadata   `json:"audit"`
-	TraceID        string          `json:"traceId,omitempty"`
+	WorktreeRoot      string          `json:"-"`
+	ToolName          string          `json:"toolName"`
+	Input             json.RawMessage `json:"input"`
+	PolicyDecision    PolicyDecision  `json:"policyDecision"`
+	Timeout           time.Duration   `json:"timeout"`
+	Audit             AuditMetadata   `json:"audit"`
+	TraceID           string          `json:"traceId,omitempty"`
+	// SkillInjection carries the resolved, sanitized skill prompt for this execution.
+	// It is nil when no skill is applicable or when the skill requires Ask approval
+	// that has not been granted.
+	SkillInjection *SkillInjection `json:"skillInjection,omitempty"`
 }
 
 // PolicyDecision carries the policy evaluation outcome for this execution.
