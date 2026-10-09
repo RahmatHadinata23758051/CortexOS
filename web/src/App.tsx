@@ -4,6 +4,7 @@ import { loadRuntimeSnapshot, type RuntimeState } from './bridge/runtime'
 import { loadWorkspaceSnapshot, type WorkspaceState } from './bridge/workspace'
 import { wailsRuntimeBridge, workspaceSchemaVersion, type WorkspaceProject } from './types'
 import { OfficeView } from './office/OfficeView'
+import { TaskBoard } from './taskboard/TaskBoard'
 
 export type ProjectFormState = {
   id: string
@@ -128,7 +129,7 @@ export function App({ initialRoute, initialTheme }: AppProps = {}) {
           <div className="rail-label">Navigation</div>
           <nav className="rail-nav">
             {navigation.map((item) => <a className={`rail-item${route === item.route ? ' active' : ''}`} href={`#${item.route}`} aria-current={route === item.route ? 'page' : undefined} key={item.route}>
-              <span aria-hidden="true">{item.icon}</span><span>{item.label}</span>{item.route !== 'workspace' && item.route !== 'office' && <em>soon</em>}
+              <span aria-hidden="true">{item.icon}</span><span>{item.label}</span>{item.route !== 'workspace' && item.route !== 'office' && item.route !== 'operations' && <em>soon</em>}
             </a>)}
           </nav>
           <a className={`rail-item rail-settings${route === 'settings' ? ' active' : ''}`} href="#settings" aria-current={route === 'settings' ? 'page' : undefined}><span aria-hidden="true">⚙</span><span>Settings</span></a>
@@ -150,6 +151,8 @@ export function App({ initialRoute, initialTheme }: AppProps = {}) {
               onSubmit={submitProject}
               onUpdateForm={updateForm}
             />
+          ) : route === 'operations' ? (
+            <TaskBoard bridge={wailsRuntimeBridge} />
           ) : route === 'office' ? (
             <div className="office-section reveal-1">
               <div className="section-heading">

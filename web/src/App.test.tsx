@@ -53,9 +53,15 @@ describe('App shell', () => {
   })
 
   it('renders route placeholder content for non-workspace routes', () => {
-    const markup = renderToStaticMarkup(<App initialRoute="operations" />)
+    const markup = renderToStaticMarkup(<App initialRoute="activity" />)
     expect(markup).toContain('is on the way')
     expect(markup).toContain('Coming soon')
+  })
+
+  it('renders the task board on operations route', () => {
+    const markup = renderToStaticMarkup(<App initialRoute="operations" />)
+    expect(markup).toContain('Task board')
+    expect(markup).toContain('orchestra.bridge.v1')
   })
 })
 

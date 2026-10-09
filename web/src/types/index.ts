@@ -18,19 +18,21 @@ export type RuntimeBridge = {
 export * from './workspace'
 export * from './office'
 export * from './cockpit'
+export * from './orchestra'
 import type { WorkspaceBridge } from './workspace'
 import type { OfficeBridge } from './office'
 import type { CockpitBridge } from './cockpit'
+import type { OrchestraBridge } from './orchestra'
 
 export type WailsWindow = Window & {
   go?: {
     platform?: {
-      Bridge?: RuntimeBridge & WorkspaceBridge & OfficeBridge & CockpitBridge
+      Bridge?: RuntimeBridge & WorkspaceBridge & OfficeBridge & CockpitBridge & OrchestraBridge
     }
   }
 }
 
-function getWailsBridge(): RuntimeBridge & WorkspaceBridge & OfficeBridge & CockpitBridge {
+function getWailsBridge(): RuntimeBridge & WorkspaceBridge & OfficeBridge & CockpitBridge & OrchestraBridge {
   const bridge = (window as WailsWindow).go?.platform?.Bridge
   if (!bridge) {
     throw new Error('CortexOS runtime bridge is unavailable')
@@ -38,7 +40,7 @@ function getWailsBridge(): RuntimeBridge & WorkspaceBridge & OfficeBridge & Cock
   return bridge
 }
 
-export const wailsRuntimeBridge: RuntimeBridge & WorkspaceBridge & OfficeBridge & CockpitBridge = {
+export const wailsRuntimeBridge: RuntimeBridge & WorkspaceBridge & OfficeBridge & CockpitBridge & OrchestraBridge = {
   GetRuntimeSnapshot: (request) => getWailsBridge().GetRuntimeSnapshot(request),
   GetWorkspaceSnapshot: (request) => getWailsBridge().GetWorkspaceSnapshot(request),
   QueryWorkspace: (request) => getWailsBridge().QueryWorkspace(request),
@@ -50,6 +52,10 @@ export const wailsRuntimeBridge: RuntimeBridge & WorkspaceBridge & OfficeBridge 
   RegisterCockpitProject: (request) => getWailsBridge().RegisterCockpitProject(request),
   QueryCockpitWorkspace: (request) => getWailsBridge().QueryCockpitWorkspace(request),
   RebuildCockpitRetrieval: (request) => getWailsBridge().RebuildCockpitRetrieval(request),
+  ListOrchestraTasks: (request) => getWailsBridge().ListOrchestraTasks(request),
+  GetOrchestraTask: (request) => getWailsBridge().GetOrchestraTask(request),
+  CancelOrchestraTask: (request) => getWailsBridge().CancelOrchestraTask(request),
+  RetryOrchestraTask: (request) => getWailsBridge().RetryOrchestraTask(request),
 }
 
 export async function getRuntimeSnapshot(
