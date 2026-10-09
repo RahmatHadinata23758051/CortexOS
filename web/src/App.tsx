@@ -3,6 +3,7 @@ import { useEffect, useState, type FormEvent } from 'react'
 import { loadRuntimeSnapshot, type RuntimeState } from './bridge/runtime'
 import { loadWorkspaceSnapshot, type WorkspaceState } from './bridge/workspace'
 import { wailsRuntimeBridge, workspaceSchemaVersion, type WorkspaceProject } from './types'
+import { OfficeView } from './office/OfficeView'
 
 export type ProjectFormState = {
   id: string
@@ -12,7 +13,7 @@ export type ProjectFormState = {
   defaultBranch: string
 }
 
-export type ShellRoute = 'workspace' | 'operations' | 'activity' | 'settings'
+export type ShellRoute = 'workspace' | 'operations' | 'activity' | 'office' | 'settings'
 export type Theme = 'light' | 'dark'
 
 export interface AppProps {
@@ -34,6 +35,7 @@ const navigation: Array<{ route: ShellRoute; label: string; icon: string; detail
   { route: 'workspace', label: 'Workspace', icon: '◈', detail: 'Projects and roots' },
   { route: 'operations', label: 'Operations', icon: '⌁', detail: 'Execution surface' },
   { route: 'activity', label: 'Activity', icon: '▦', detail: 'Recent events' },
+  { route: 'office', label: 'Office', icon: '□', detail: 'Virtual office' },
 ]
 
 export function App({ initialRoute, initialTheme }: AppProps = {}) {
@@ -126,7 +128,7 @@ export function App({ initialRoute, initialTheme }: AppProps = {}) {
           <div className="rail-label">Navigation</div>
           <nav className="rail-nav">
             {navigation.map((item) => <a className={`rail-item${route === item.route ? ' active' : ''}`} href={`#${item.route}`} aria-current={route === item.route ? 'page' : undefined} key={item.route}>
-              <span aria-hidden="true">{item.icon}</span><span>{item.label}</span>{item.route !== 'workspace' && <em>soon</em>}
+              <span aria-hidden="true">{item.icon}</span><span>{item.label}</span>{item.route !== 'workspace' && item.route !== 'office' && <em>soon</em>}
             </a>)}
           </nav>
           <a className={`rail-item rail-settings${route === 'settings' ? ' active' : ''}`} href="#settings" aria-current={route === 'settings' ? 'page' : undefined}><span aria-hidden="true">⚙</span><span>Settings</span></a>
@@ -148,6 +150,14 @@ export function App({ initialRoute, initialTheme }: AppProps = {}) {
               onSubmit={submitProject}
               onUpdateForm={updateForm}
             />
+          ) : route === 'office' ? (
+            <div className="office-section reveal-1">
+              <div className="section-heading">
+                <div><span className="eyebrow">Presentation layer</span><h2>Virtual office</h2></div>
+                <span className="section-index">01 / 01</span>
+              </div>
+              <OfficeView />
+            </div>
           ) : (
             <RoutePlaceholder route={route} />
           )}
