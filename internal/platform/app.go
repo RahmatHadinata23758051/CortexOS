@@ -23,13 +23,19 @@ func SetAssetFS(assets fs.FS) {
 // Application owns the Wails lifecycle boundary. Domain services are passed in
 // as bindings and remain independent from the desktop framework.
 type Application struct {
-	wails *application.Application
-
-	shutdownOnce sync.Once
+	wails         *application.Application
+	startupHooks  []func(context.Context)
+	shutdownHooks []func(context.Context)
+	shutdownOnce  sync.Once
+	mu            sync.Mutex
 }
 
 // New creates a desktop application with deterministic lifecycle callbacks.
 func New() *Application {
+	app := &Application{
+		startupHooks:  make([]func(context.Context), 0),
+		shutdownHooks: make([]func(context.Context), 0),
+	}
 	wails := application.NewWithOptions(&options.App{
 		Title:            "CortexOS",
 		Width:            1280,
@@ -41,11 +47,61 @@ func New() *Application {
 		Windows: &windows.Options{
 			WebviewIsTransparent: false,
 		},
-		OnStartup:  func(context.Context) {},
-		OnShutdown: func(context.Context) {},
+		OnStartup:  app.handleStartup,
+		OnShutdown: app.handleShutdown,
 	})
+	app.wails = wails
+	return app
+}
 
-	return &Application{wails: wails}
+// OnStartup registers a startup hook.
+func (a *Application) OnStartup(hook func(context.Context)) {
+	if a == nil {
+		return
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.startupHooks = append(a.startupHooks, hook)
+}
+
+// OnShutdown registers a shutdown hook.
+func (a *Application) OnShutdown(hook func(context.Context)) {
+	if a == nil {
+		return
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.shutdownHooks = append(a.shutdownHooks, hook)
+}
+
+func (a *Application) handleStartup(ctx context.Context) {
+	if a == nil {
+		return
+	}
+	a.mu.Lock()
+	hooks := make([]func(context.Context), len(a.startupHooks))
+	copy(hooks, a.startupHooks)
+	a.mu.Unlock()
+	for _, hook := range hooks {
+		if hook != nil {
+			hook(ctx)
+		}
+	}
+}
+
+func (a *Application) handleShutdown(ctx context.Context) {
+	if a == nil {
+		return
+	}
+	a.mu.Lock()
+	hooks := make([]func(context.Context), len(a.shutdownHooks))
+	copy(hooks, a.shutdownHooks)
+	a.mu.Unlock()
+	for _, hook := range hooks {
+		if hook != nil {
+			hook(ctx)
+		}
+	}
 }
 
 // Bind exposes an application service through the Wails binding boundary.
@@ -54,6 +110,14 @@ func (a *Application) Bind(service any) {
 		return
 	}
 	a.wails.Bind(service)
+}
+
+// BindCockpit exposes the CockpitBridge through Wails bindings.
+func (a *Application) BindCockpit(bridge *CockpitBridge) {
+	if a == nil || a.wails == nil {
+		return
+	}
+	a.wails.Bind(bridge)
 }
 
 // Run starts the desktop application and blocks until Wails exits.

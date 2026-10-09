@@ -17,18 +17,20 @@ export type RuntimeBridge = {
 
 export * from './workspace'
 export * from './office'
+export * from './cockpit'
 import type { WorkspaceBridge } from './workspace'
 import type { OfficeBridge } from './office'
+import type { CockpitBridge } from './cockpit'
 
 export type WailsWindow = Window & {
   go?: {
     platform?: {
-      Bridge?: RuntimeBridge & WorkspaceBridge & OfficeBridge
+      Bridge?: RuntimeBridge & WorkspaceBridge & OfficeBridge & CockpitBridge
     }
   }
 }
 
-function getWailsBridge(): RuntimeBridge & WorkspaceBridge & OfficeBridge {
+function getWailsBridge(): RuntimeBridge & WorkspaceBridge & OfficeBridge & CockpitBridge {
   const bridge = (window as WailsWindow).go?.platform?.Bridge
   if (!bridge) {
     throw new Error('CortexOS runtime bridge is unavailable')
@@ -36,13 +38,18 @@ function getWailsBridge(): RuntimeBridge & WorkspaceBridge & OfficeBridge {
   return bridge
 }
 
-export const wailsRuntimeBridge: RuntimeBridge & WorkspaceBridge & OfficeBridge = {
+export const wailsRuntimeBridge: RuntimeBridge & WorkspaceBridge & OfficeBridge & CockpitBridge = {
   GetRuntimeSnapshot: (request) => getWailsBridge().GetRuntimeSnapshot(request),
   GetWorkspaceSnapshot: (request) => getWailsBridge().GetWorkspaceSnapshot(request),
   QueryWorkspace: (request) => getWailsBridge().QueryWorkspace(request),
   RebuildWorkspaceRetrieval: (request) => getWailsBridge().RebuildWorkspaceRetrieval(request),
   RegisterWorkspaceProject: (request) => getWailsBridge().RegisterWorkspaceProject(request),
   ListStaffSummaries: (request) => getWailsBridge().ListStaffSummaries(request),
+  GetCockpitRuntime: () => getWailsBridge().GetCockpitRuntime(),
+  GetCockpitWorkspace: (request) => getWailsBridge().GetCockpitWorkspace(request),
+  RegisterCockpitProject: (request) => getWailsBridge().RegisterCockpitProject(request),
+  QueryCockpitWorkspace: (request) => getWailsBridge().QueryCockpitWorkspace(request),
+  RebuildCockpitRetrieval: (request) => getWailsBridge().RebuildCockpitRetrieval(request),
 }
 
 export async function getRuntimeSnapshot(

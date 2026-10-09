@@ -32,6 +32,7 @@ type Service struct {
 	harness   HarnessPort
 	staff     StaffPort
 	knowledge KnowledgePort
+	cockpit   CockpitPort
 }
 
 // NewService creates the minimal Phase 1 application service.
@@ -73,6 +74,11 @@ func NewServiceWithStaff(staffService StaffPort) *Service {
 // NewServiceWithKnowledge adds the optional Knowledge observability boundary.
 func NewServiceWithKnowledge(knowledgeService KnowledgePort) *Service {
 	return &Service{knowledge: knowledgeService}
+}
+
+// NewServiceWithCockpit adds the optional Cockpit application boundary.
+func NewServiceWithCockpit(cockpitService CockpitPort) *Service {
+	return &Service{cockpit: cockpitService}
 }
 
 // NewServiceWithFull combines all available application boundaries.
