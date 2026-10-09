@@ -26,10 +26,11 @@ describe('App shell', () => {
     expect(markup).toContain('☾')
   })
 
-  it('includes navigation rail with workspace, operations, activity, settings', () => {
+  it('includes navigation rail with workspace, operations, terminal, activity, settings', () => {
     const markup = renderToStaticMarkup(<App />)
     expect(markup).toContain('Workspace')
     expect(markup).toContain('Operations')
+    expect(markup).toContain('Terminal')
     expect(markup).toContain('Activity')
     expect(markup).toContain('Settings')
     expect(markup).toContain('Primary navigation')
@@ -62,6 +63,13 @@ describe('App shell', () => {
     const markup = renderToStaticMarkup(<App initialRoute="operations" />)
     expect(markup).toContain('Task board')
     expect(markup).toContain('orchestra.bridge.v1')
+  })
+
+  it('renders the Terminal Workflow panel on terminal route', () => {
+    const markup = renderToStaticMarkup(<App initialRoute="terminal" />)
+    expect(markup).toContain('Terminal Workflow')
+    expect(markup).toContain('cortexos.worker.v1')
+    expect(markup).toContain('Resource &amp; Lease Monitor')
   })
 })
 

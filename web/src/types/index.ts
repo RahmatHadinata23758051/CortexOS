@@ -20,13 +20,15 @@ export * from './office'
 export * from './cockpit'
 export * from './orchestra'
 export * from './knowledge'
+export * from './harness'
 import type { WorkspaceBridge } from './workspace'
 import type { KnowledgeBridge } from './knowledge'
+import type { HarnessBridge } from './harness'
 import type { OfficeBridge } from './office'
 import type { CockpitBridge } from './cockpit'
 import type { OrchestraBridge } from './orchestra'
 
-export type FullBridge = RuntimeBridge & WorkspaceBridge & OfficeBridge & CockpitBridge & OrchestraBridge & KnowledgeBridge
+export type FullBridge = RuntimeBridge & WorkspaceBridge & OfficeBridge & CockpitBridge & OrchestraBridge & KnowledgeBridge & HarnessBridge
 
 export type WailsWindow = Window & {
   go?: {
@@ -62,6 +64,10 @@ export const wailsRuntimeBridge: FullBridge = {
   RetryOrchestraTask: (request) => getWailsBridge().RetryOrchestraTask(request),
   ListKnowledgeSources: (request) => getWailsBridge().ListKnowledgeSources(request),
   QueryKnowledge: (request) => getWailsBridge().QueryKnowledge(request),
+  ListHarnessCapabilities: (request) => getWailsBridge().ListHarnessCapabilities(request),
+  ListHarnessWorkers: (request) => getWailsBridge().ListHarnessWorkers(request),
+  ListActiveHarnessExecutions: (request) => getWailsBridge().ListActiveHarnessExecutions(request),
+  GetHarnessEvidence: (request) => getWailsBridge().GetHarnessEvidence(request),
 }
 
 export async function getRuntimeSnapshot(

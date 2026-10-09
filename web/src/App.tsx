@@ -7,6 +7,7 @@ import { OfficeView } from './office/OfficeView'
 import { TaskBoard } from './taskboard/TaskBoard'
 import { KnowledgeView } from './office/KnowledgeView'
 import { StaffPanel } from './staff/StaffPanel'
+import { TerminalPanel } from './components/terminal/TerminalPanel'
 
 export type ProjectFormState = {
   id: string
@@ -16,7 +17,7 @@ export type ProjectFormState = {
   defaultBranch: string
 }
 
-export type ShellRoute = 'workspace' | 'operations' | 'activity' | 'office' | 'knowledge' | 'staff' | 'settings'
+export type ShellRoute = 'workspace' | 'operations' | 'terminal' | 'activity' | 'office' | 'knowledge' | 'staff' | 'settings'
 export type Theme = 'light' | 'dark'
 
 export interface AppProps {
@@ -37,6 +38,7 @@ const emptyProject: ProjectFormState = {
 const navigation: Array<{ route: ShellRoute; label: string; icon: string; detail: string }> = [
   { route: 'workspace', label: 'Workspace', icon: '◈', detail: 'Projects and roots' },
   { route: 'operations', label: 'Operations', icon: '⌁', detail: 'Execution surface' },
+  { route: 'terminal', label: 'Terminal', icon: '›', detail: 'Harness broker' },
   { route: 'activity', label: 'Activity', icon: '▦', detail: 'Recent events' },
   { route: 'office', label: 'Office', icon: '□', detail: 'Virtual office' },
   { route: 'knowledge', label: 'Knowledge', icon: '⌘', detail: 'Vault browser' },
@@ -133,7 +135,7 @@ export function App({ initialRoute, initialTheme }: AppProps = {}) {
           <div className="rail-label">Navigation</div>
           <nav className="rail-nav">
             {navigation.map((item) => <a className={`rail-item${route === item.route ? ' active' : ''}`} href={`#${item.route}`} aria-current={route === item.route ? 'page' : undefined} key={item.route}>
-              <span aria-hidden="true">{item.icon}</span><span>{item.label}</span>{item.route !== 'workspace' && item.route !== 'office' && item.route !== 'operations' && <em>soon</em>}
+              <span aria-hidden="true">{item.icon}</span><span>{item.label}</span>{item.route !== 'workspace' && item.route !== 'office' && item.route !== 'operations' && item.route !== 'terminal' && <em>soon</em>}
             </a>)}
           </nav>
           <a className={`rail-item rail-settings${route === 'settings' ? ' active' : ''}`} href="#settings" aria-current={route === 'settings' ? 'page' : undefined}><span aria-hidden="true">⚙</span><span>Settings</span></a>
@@ -157,6 +159,8 @@ export function App({ initialRoute, initialTheme }: AppProps = {}) {
             />
           ) : route === 'operations' ? (
             <TaskBoard bridge={wailsRuntimeBridge} />
+          ) : route === 'terminal' ? (
+            <TerminalPanel bridge={wailsRuntimeBridge} />
           ) : route === 'office' ? (
             <div className="office-section reveal-1">
               <div className="section-heading">
@@ -235,7 +239,7 @@ export function WorkspaceView({
   </>
 }
 
-export function RoutePlaceholder({ route }: { route: Exclude<ShellRoute, 'workspace' | 'office' | 'knowledge'> }) {
+export function RoutePlaceholder({ route }: { route: Exclude<ShellRoute, 'workspace' | 'office' | 'knowledge' | 'terminal'> }) {
   const title = route === 'settings' ? 'Settings' : route === 'operations' ? 'Operations' : 'Activity'
   const eyebrow = route === 'settings' ? 'CORTEXOS / PREFERENCES' : `CORTEXOS / ${title.toUpperCase()}`
   return (
@@ -265,7 +269,7 @@ export function ProjectCard({ project }: { project: WorkspaceProject }) {
 function getRouteFromLocation(): ShellRoute {
   if (typeof window === 'undefined') return 'workspace'
   const route = window.location.hash.slice(1) as ShellRoute
-  return ['workspace', 'operations', 'activity', 'office', 'knowledge', 'settings'].includes(route) ? route : 'workspace'
+  return ['workspace', 'operations', 'terminal', 'activity', 'office', 'knowledge', 'staff', 'settings'].includes(route) ? route : 'workspace'
 }
 
 function getThemePreference(): Theme {
