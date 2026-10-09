@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { loadOrchestraTasks, cancelOrchestraTask, getOrchestraTask, retryOrchestraTask } from '../bridge/orchestra'
 import { onOrchestraTaskChanged } from '../bridge/orchestra-events'
 import { type OrchestraBridge, type OrchestraTaskDetail, type OrchestraTaskStatus, type OrchestraTaskSummary } from '../types/orchestra'
+import { InspectorReview } from '../components/inspector/InspectorReview'
 
 export type TaskBoardCommands = {
   /** Reassignment remains a bridge seam; Staff/Orchestra retain authority. */
@@ -89,7 +90,7 @@ export function TaskBoard({ bridge, commands = {} }: { bridge: OrchestraBridge; 
     {state.status === 'success' && tasks.length === 0 && <div className="task-empty"><span className="empty-glyph" aria-hidden="true">∅</span><div><strong>No tasks in Orchestra</strong><p>New governed work will appear here when it is admitted.</p></div></div>}
     {state.status === 'success' && tasks.length > 0 && visibleTasks.length === 0 && <div className="task-empty"><strong>No matching tasks</strong><p>Try a different status or search term.</p></div>}
     {state.status === 'success' && visibleTasks.length > 0 && <div className="kanban" aria-label="Task status columns">{columns.map((column) => <TaskColumn key={column.status} column={column} tasks={visibleTasks.filter((task) => task.status === column.status)} selectedId={selected?.id} commandTask={commandTask} onInspect={inspect} onCancel={(task) => void command(task, 'cancel')} onRetry={(task) => void command(task, 'retry')} onReassign={commands.onReassign} />)}</div>}
-    {selected && <TaskDetail task={selected} detail={detail} onClose={() => { setSelected(null); setDetail(null) }} />}
+    {selected && detail ? <InspectorReview task={selected} detail={detail} onClose={() => { setSelected(null); setDetail(null) }} /> : selected && <TaskDetail task={selected} detail={detail} onClose={() => { setSelected(null); setDetail(null) }} />}
   </section>
 }
 
