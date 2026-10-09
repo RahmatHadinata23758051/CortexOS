@@ -19,20 +19,24 @@ export * from './workspace'
 export * from './office'
 export * from './cockpit'
 export * from './orchestra'
+export * from './knowledge'
 import type { WorkspaceBridge } from './workspace'
+import type { KnowledgeBridge } from './knowledge'
 import type { OfficeBridge } from './office'
 import type { CockpitBridge } from './cockpit'
 import type { OrchestraBridge } from './orchestra'
 
+export type FullBridge = RuntimeBridge & WorkspaceBridge & OfficeBridge & CockpitBridge & OrchestraBridge & KnowledgeBridge
+
 export type WailsWindow = Window & {
   go?: {
     platform?: {
-      Bridge?: RuntimeBridge & WorkspaceBridge & OfficeBridge & CockpitBridge & OrchestraBridge
+      Bridge?: FullBridge
     }
   }
 }
 
-function getWailsBridge(): RuntimeBridge & WorkspaceBridge & OfficeBridge & CockpitBridge & OrchestraBridge {
+function getWailsBridge(): FullBridge {
   const bridge = (window as WailsWindow).go?.platform?.Bridge
   if (!bridge) {
     throw new Error('CortexOS runtime bridge is unavailable')
@@ -40,7 +44,7 @@ function getWailsBridge(): RuntimeBridge & WorkspaceBridge & OfficeBridge & Cock
   return bridge
 }
 
-export const wailsRuntimeBridge: RuntimeBridge & WorkspaceBridge & OfficeBridge & CockpitBridge & OrchestraBridge = {
+export const wailsRuntimeBridge: FullBridge = {
   GetRuntimeSnapshot: (request) => getWailsBridge().GetRuntimeSnapshot(request),
   GetWorkspaceSnapshot: (request) => getWailsBridge().GetWorkspaceSnapshot(request),
   QueryWorkspace: (request) => getWailsBridge().QueryWorkspace(request),
@@ -56,6 +60,8 @@ export const wailsRuntimeBridge: RuntimeBridge & WorkspaceBridge & OfficeBridge 
   GetOrchestraTask: (request) => getWailsBridge().GetOrchestraTask(request),
   CancelOrchestraTask: (request) => getWailsBridge().CancelOrchestraTask(request),
   RetryOrchestraTask: (request) => getWailsBridge().RetryOrchestraTask(request),
+  ListKnowledgeSources: (request) => getWailsBridge().ListKnowledgeSources(request),
+  QueryKnowledge: (request) => getWailsBridge().QueryKnowledge(request),
 }
 
 export async function getRuntimeSnapshot(

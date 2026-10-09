@@ -5,6 +5,7 @@ import { loadWorkspaceSnapshot, type WorkspaceState } from './bridge/workspace'
 import { wailsRuntimeBridge, workspaceSchemaVersion, type WorkspaceProject } from './types'
 import { OfficeView } from './office/OfficeView'
 import { TaskBoard } from './taskboard/TaskBoard'
+import { KnowledgeView } from './office/KnowledgeView'
 
 export type ProjectFormState = {
   id: string
@@ -14,7 +15,7 @@ export type ProjectFormState = {
   defaultBranch: string
 }
 
-export type ShellRoute = 'workspace' | 'operations' | 'activity' | 'office' | 'settings'
+export type ShellRoute = 'workspace' | 'operations' | 'activity' | 'office' | 'knowledge' | 'settings'
 export type Theme = 'light' | 'dark'
 
 export interface AppProps {
@@ -37,6 +38,7 @@ const navigation: Array<{ route: ShellRoute; label: string; icon: string; detail
   { route: 'operations', label: 'Operations', icon: '⌁', detail: 'Execution surface' },
   { route: 'activity', label: 'Activity', icon: '▦', detail: 'Recent events' },
   { route: 'office', label: 'Office', icon: '□', detail: 'Virtual office' },
+  { route: 'knowledge', label: 'Knowledge', icon: '⌘', detail: 'Vault browser' },
 ]
 
 export function App({ initialRoute, initialTheme }: AppProps = {}) {
@@ -161,6 +163,8 @@ export function App({ initialRoute, initialTheme }: AppProps = {}) {
               </div>
               <OfficeView />
             </div>
+          ) : route === 'knowledge' ? (
+            <KnowledgeView />
           ) : (
             <RoutePlaceholder route={route} />
           )}
@@ -227,7 +231,7 @@ export function WorkspaceView({
   </>
 }
 
-export function RoutePlaceholder({ route }: { route: Exclude<ShellRoute, 'workspace'> }) {
+export function RoutePlaceholder({ route }: { route: Exclude<ShellRoute, 'workspace' | 'office' | 'knowledge'> }) {
   const title = route === 'settings' ? 'Settings' : route === 'operations' ? 'Operations' : 'Activity'
   const eyebrow = route === 'settings' ? 'CORTEXOS / PREFERENCES' : `CORTEXOS / ${title.toUpperCase()}`
   return (
@@ -257,7 +261,7 @@ export function ProjectCard({ project }: { project: WorkspaceProject }) {
 function getRouteFromLocation(): ShellRoute {
   if (typeof window === 'undefined') return 'workspace'
   const route = window.location.hash.slice(1) as ShellRoute
-  return ['workspace', 'operations', 'activity', 'settings'].includes(route) ? route : 'workspace'
+  return ['workspace', 'operations', 'activity', 'office', 'knowledge', 'settings'].includes(route) ? route : 'workspace'
 }
 
 function getThemePreference(): Theme {
