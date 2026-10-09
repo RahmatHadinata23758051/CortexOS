@@ -6,6 +6,7 @@ import { wailsRuntimeBridge, workspaceSchemaVersion, type WorkspaceProject } fro
 import { OfficeView } from './office/OfficeView'
 import { TaskBoard } from './taskboard/TaskBoard'
 import { KnowledgeView } from './office/KnowledgeView'
+import { StaffPanel } from './staff/StaffPanel'
 
 export type ProjectFormState = {
   id: string
@@ -15,7 +16,7 @@ export type ProjectFormState = {
   defaultBranch: string
 }
 
-export type ShellRoute = 'workspace' | 'operations' | 'activity' | 'office' | 'knowledge' | 'settings'
+export type ShellRoute = 'workspace' | 'operations' | 'activity' | 'office' | 'knowledge' | 'staff' | 'settings'
 export type Theme = 'light' | 'dark'
 
 export interface AppProps {
@@ -39,6 +40,7 @@ const navigation: Array<{ route: ShellRoute; label: string; icon: string; detail
   { route: 'activity', label: 'Activity', icon: '▦', detail: 'Recent events' },
   { route: 'office', label: 'Office', icon: '□', detail: 'Virtual office' },
   { route: 'knowledge', label: 'Knowledge', icon: '⌘', detail: 'Vault browser' },
+  { route: 'staff', label: 'Staff', icon: '◎', detail: 'Staff management' },
 ]
 
 export function App({ initialRoute, initialTheme }: AppProps = {}) {
@@ -165,6 +167,8 @@ export function App({ initialRoute, initialTheme }: AppProps = {}) {
             </div>
           ) : route === 'knowledge' ? (
             <KnowledgeView />
+          ) : route === 'staff' ? (
+            <StaffPanel />
           ) : (
             <RoutePlaceholder route={route} />
           )}
