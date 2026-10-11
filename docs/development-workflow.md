@@ -59,6 +59,18 @@ Inspect staged paths and confirm no secret, raw harvest clone, build output, dep
 
 A command is not considered passing merely because it is documented. Until a manifest and implementation exist, the command is recorded as a planned Phase 1 gate and the gap remains visible.
 
+## Worktree and branch cleanup
+
+After a worker finishes and its validated changes are merged to `main`:
+
+1. Release the completed worker/terminal through Orca.
+2. Remove the worker worktree when it is no longer needed.
+3. Delete the corresponding local topic branch once its changes are merged and no recovery is required.
+4. Remove obsolete remote topic branches only when they are confirmed merged and no longer used by an open review or follow-up task.
+5. Keep `main` as the retained integration worktree; never remove or force-delete a worktree that still owns unmerged user work.
+
+This cleanup is part of the completion checklist, not deferred housekeeping. If a worker fails or its changes are not merged, retain the worktree and branch until the outcome and recovery decision are explicit.
+
 ## Push checklist
 
 Before pushing a branch:
