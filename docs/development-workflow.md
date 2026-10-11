@@ -53,8 +53,10 @@ Inspect staged paths and confirm no secret, raw harvest clone, build output, dep
 | Ignore policy | `git check-ignore -v .mcp.json _harvest/raw build/bin` | Sensitive/generated paths are ignored |
 | Provenance | `& .\scripts\harvest.ps1 -SkipClone` | Manifest regenerates without changing raw clones |
 | Secret review | `Select-String` over tracked config/docs | No real secret values or credential prefixes |
-| Go format/test | `gofmt -l .`, `go test ./...` | Enabled after Go manifests exist |
-| Frontend checks | `npm ci`, `npm run typecheck`, `npm run lint`, `npm test`, `npm run build` | Enabled after frontend manifests exist |
+| Go format/test | `gofmt -l .`, `go test ./...` | All packages pass; zero formatting defects on edited files |
+| Go static analysis | `go vet ./...` | Clean pass across internal packages |
+| Frontend checks | `npm run typecheck`, `npm run lint`, `npm test`, `npm run build` | Zero TypeScript, ESLint, Vitest, or bundle build failures |
+| End-to-end fixtures | `go test ./internal/cortex/orchestra/ -run TestBAN124`, `vitest run src/integration/ban124_e2e.test.ts` | Phase 6 Cockpit/Inspector/Merge/Plan-update chain verified end-to-end |
 | Documentation review | Manual link/scope/ADR check | Contract agrees with current architecture |
 
 A command is not considered passing merely because it is documented. Until a manifest and implementation exist, the command is recorded as a planned Phase 1 gate and the gap remains visible.
