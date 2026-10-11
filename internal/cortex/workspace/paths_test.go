@@ -2,6 +2,7 @@ package workspace
 
 import (
 	"path/filepath"
+	"runtime"
 	"testing"
 )
 
@@ -22,7 +23,15 @@ func TestCanonicalRootRequiresAbsoluteNonRootPath(t *testing.T) {
 func TestCanonicalRelativeRejectsEscapesAndAbsolutePaths(t *testing.T) {
 	t.Parallel()
 
-	for _, input := range []string{"..", "../outside", "nested/../../outside", filepath.Join(string(filepath.VolumeName("C:")), "outside")} {
+	inputs := []string{"..", "../outside", "nested/../../outside"}
+	if runtime.GOOS == "windows" {
+		// "C:outside" is a Windows volume-rooted path, rejected via volume check.
+		inputs = append(inputs, "C:outside")
+	} else {
+		// "/outside" is an absolute POSIX path.
+		inputs = append(inputs, string(filepath.Separator)+"outside")
+	}
+	for _, input := range inputs {
 		if _, err := CanonicalRelative(input); ErrorCodeOf(err) != ErrPathDenied {
 			t.Errorf("CanonicalRelative(%q) error code = %q, want %q", input, ErrorCodeOf(err), ErrPathDenied)
 		}

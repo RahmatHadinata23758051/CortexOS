@@ -2,6 +2,7 @@ package platform
 
 import (
 	"context"
+	"path/filepath"
 	"sync"
 	"testing"
 	"time"
@@ -94,6 +95,9 @@ func TestEventEmitterSetContext(t *testing.T) {
 func TestCockpitBridgeEventHooks(t *testing.T) {
 	t.Parallel()
 
+	projectRoot1 := filepath.Join(t.TempDir(), "project-1")
+	projectRoot2 := filepath.Join(t.TempDir(), "project-2")
+
 	memory := workspace.NewMemoryWorkspace()
 	service, err := workspace.NewService(workspace.Dependencies{
 		State: memory, Projects: memory, Worktrees: memory, Retrieval: memory,
@@ -104,8 +108,8 @@ func TestCockpitBridgeEventHooks(t *testing.T) {
 	if _, err := memory.RegisterProject(context.Background(), workspace.Project{
 		ID:             "project-1",
 		Name:           "Project",
-		RepositoryRoot: "C:/Projects/project-1",
-		VaultRoot:      "C:/Projects/project-1/vault",
+		RepositoryRoot: projectRoot1,
+		VaultRoot:      filepath.Join(projectRoot1, "vault"),
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -133,8 +137,8 @@ func TestCockpitBridgeEventHooks(t *testing.T) {
 		SchemaVersion:  application.CockpitBridgeSchemaVersion,
 		ID:             "project-2",
 		Name:           "Project Two",
-		RepositoryRoot: "C:/Projects/project-2",
-		VaultRoot:      "C:/Projects/project-2/vault",
+		RepositoryRoot: projectRoot2,
+		VaultRoot:      filepath.Join(projectRoot2, "vault"),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -180,6 +184,9 @@ func TestCockpitBridgeEventHooks(t *testing.T) {
 func TestBridgeEventHooks(t *testing.T) {
 	t.Parallel()
 
+	projectRoot1 := filepath.Join(t.TempDir(), "project-1")
+	projectRoot2 := filepath.Join(t.TempDir(), "project-2")
+
 	memory := workspace.NewMemoryWorkspace()
 	service, err := workspace.NewService(workspace.Dependencies{
 		State: memory, Projects: memory, Worktrees: memory, Retrieval: memory,
@@ -190,8 +197,8 @@ func TestBridgeEventHooks(t *testing.T) {
 	if _, err := memory.RegisterProject(context.Background(), workspace.Project{
 		ID:             "project-1",
 		Name:           "Project",
-		RepositoryRoot: "C:/Projects/project-1",
-		VaultRoot:      "C:/Projects/project-1/vault",
+		RepositoryRoot: projectRoot1,
+		VaultRoot:      filepath.Join(projectRoot1, "vault"),
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -212,8 +219,8 @@ func TestBridgeEventHooks(t *testing.T) {
 		SchemaVersion:  application.CockpitBridgeSchemaVersion,
 		ID:             "project-2",
 		Name:           "Project Two",
-		RepositoryRoot: "C:/Projects/project-2",
-		VaultRoot:      "C:/Projects/project-2/vault",
+		RepositoryRoot: projectRoot2,
+		VaultRoot:      filepath.Join(projectRoot2, "vault"),
 	})
 	_ = bridge.RebuildCockpitRetrieval(application.CockpitMutationRequest{
 		SchemaVersion: application.CockpitBridgeSchemaVersion,

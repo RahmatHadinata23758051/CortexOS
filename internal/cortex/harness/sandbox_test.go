@@ -29,6 +29,25 @@ func mustSandbox(root string) *ExecutionSandbox {
 	return s
 }
 
+// platformEcho returns an argv that prints msg on the host platform. POSIX
+// hosts must not receive Windows-style "/c" flags: on Unix an argument like
+// "/c" is an absolute path and would be rejected by sandbox path validation.
+func platformEcho(msg string) (string, []string) {
+	if runtime.GOOS == "windows" {
+		return "cmd", []string{"/c", "echo", msg}
+	}
+	return "sh", []string{"-c", "echo " + msg}
+}
+
+// platformSleep returns an argv that sleeps for wholeSeconds on the host
+// platform.
+func platformSleep(wholeSeconds string) (string, []string) {
+	if runtime.GOOS == "windows" {
+		return "powershell", []string{"-NoProfile", "-Command", "Start-Sleep -Seconds " + wholeSeconds}
+	}
+	return "sleep", []string{wholeSeconds}
+}
+
 func TestSandboxNewRejectsMissingRoot(t *testing.T) {
 	_, err := NewSandbox(SandboxConfig{})
 	if err == nil || !errors.Is(err, ErrSandbox) {
@@ -287,7 +306,8 @@ func TestSandboxProcessRunSuccess(t *testing.T) {
 
 	runner := &DefaultProcessRunner{}
 	ctx := context.Background()
-	result, err := sb.ExecuteWithSandbox(NewExecutionContext(ctx, "trace-test"), runner, "cmd", []string{"/c", "echo", "hello"}, os.Environ(), root)
+	command, args := platformEcho("hello")
+	result, err := sb.ExecuteWithSandbox(NewExecutionContext(ctx, "trace-test"), runner, command, args, os.Environ(), root)
 	if err != nil {
 		t.Fatalf("ExecuteWithSandbox: %v", err)
 	}
@@ -327,7 +347,8 @@ func TestSandboxProcessRunTimeout(t *testing.T) {
 
 	runner := &DefaultProcessRunner{}
 	ctx := context.Background()
-	result, err := sb.ExecuteWithSandbox(NewExecutionContext(ctx, "trace-test"), runner, "powershell", []string{"-NoProfile", "-Command", "Start-Sleep -Seconds 1"}, os.Environ(), root)
+	command, args := platformSleep("1")
+	result, err := sb.ExecuteWithSandbox(NewExecutionContext(ctx, "trace-test"), runner, command, args, os.Environ(), root)
 	if err == nil {
 		t.Fatal("expected timeout error")
 	}
@@ -346,7 +367,8 @@ func TestSandboxProcessRunCancellation(t *testing.T) {
 	runner := &DefaultProcessRunner{}
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel() // cancel immediately
-	result, err := sb.ExecuteWithSandbox(NewExecutionContext(ctx, "trace-test"), runner, "powershell", []string{"-NoProfile", "-Command", "Start-Sleep -Seconds 10"}, os.Environ(), root)
+	command, args := platformSleep("10")
+	result, err := sb.ExecuteWithSandbox(NewExecutionContext(ctx, "trace-test"), runner, command, args, os.Environ(), root)
 	if err == nil {
 		t.Fatal("expected cancellation error")
 	}
@@ -374,7 +396,8 @@ func TestSandboxProcessRunOutputLimit(t *testing.T) {
 	runner := &DefaultProcessRunner{}
 	ctx := context.Background()
 	// Use a command that produces more than 10 bytes
-	_, err = sb.ExecuteWithSandbox(NewExecutionContext(ctx, "trace-test"), runner, "cmd", []string{"/c", "echo", "this output is longer than ten bytes"}, os.Environ(), root)
+	command, args := platformEcho("this output is longer than ten bytes")
+	_, err = sb.ExecuteWithSandbox(NewExecutionContext(ctx, "trace-test"), runner, command, args, os.Environ(), root)
 	if err != nil {
 		t.Fatalf("ExecuteWithSandbox: %v", err)
 	}

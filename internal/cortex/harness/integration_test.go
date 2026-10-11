@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -72,7 +73,12 @@ func TestHarnessFullPathFixture(t *testing.T) {
 	})
 
 	t.Run("sandbox security and cleanup", func(t *testing.T) {
-		for _, path := range []string{"../outside", `..\outside`, filepath.Join(root, "outside")} {
+		traversals := []string{"../outside", filepath.Join(root, "outside")}
+		if runtime.GOOS == "windows" {
+			// Backslash is only a path separator on Windows; on POSIX it is a literal filename byte.
+			traversals = append(traversals, `..\outside`)
+		}
+		for _, path := range traversals {
 			if _, err := sandbox.ValidatePath(path); !errors.Is(err, harness.ErrWorktreeViolation) {
 				t.Errorf("ValidatePath(%q) error = %v, want worktree violation", path, err)
 			}

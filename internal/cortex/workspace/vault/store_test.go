@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 	"time"
 
@@ -105,7 +106,12 @@ func TestStoreRejectsTraversalAndNonMarkdownPaths(t *testing.T) {
 		t.Fatal(err)
 	}
 	base := workspace.VaultNote{ID: "note", ProjectID: "project", Title: "Note", Body: "body\n", FormatVersion: FormatVersion, Source: "manual", Author: "tester"}
-	for _, path := range []string{"../escape.md", "note.txt", "C:/escape.md"} {
+	// Absolute-escape fixture must be host-native: "C:/..." is only absolute on Windows.
+	absoluteEscape := "/escape.md"
+	if runtime.GOOS == "windows" {
+		absoluteEscape = "C:/escape.md"
+	}
+	for _, path := range []string{"../escape.md", "note.txt", absoluteEscape} {
 		base.RelativePath = path
 		if _, err := store.CreateNote(context.Background(), base); workspace.ErrorCodeOf(err) != workspace.ErrPathDenied && workspace.ErrorCodeOf(err) != workspace.ErrInvalidRequest {
 			t.Errorf("path %q error code = %q", path, workspace.ErrorCodeOf(err))

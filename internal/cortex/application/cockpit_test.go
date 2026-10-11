@@ -3,14 +3,27 @@ package application
 import (
 	"context"
 	"errors"
+	"path/filepath"
 	"testing"
 	"time"
 
 	"github.com/RahmatHadinata23758051/CortexOS/internal/cortex/workspace"
 )
 
+// tempProjectRoot returns a platform-agnostic absolute project root so path
+// validation behaves identically on Windows and POSIX hosts.
+func tempProjectRoot(t *testing.T, name string) (repositoryRoot, vaultRoot string) {
+	t.Helper()
+	repositoryRoot = filepath.Join(t.TempDir(), name)
+	vaultRoot = filepath.Join(repositoryRoot, "vault")
+	return repositoryRoot, vaultRoot
+}
+
 func TestCockpitBridgeContracts(t *testing.T) {
 	t.Parallel()
+
+	repoRoot1, vaultRoot1 := tempProjectRoot(t, "project-1")
+	repoRoot2, vaultRoot2 := tempProjectRoot(t, "project-2")
 
 	memory := workspace.NewMemoryWorkspace()
 	service, err := workspace.NewService(workspace.Dependencies{
@@ -19,7 +32,7 @@ func TestCockpitBridgeContracts(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := memory.RegisterProject(context.Background(), workspace.Project{ID: "project-1", Name: "Project", RepositoryRoot: "C:/Projects/project-1", VaultRoot: "C:/Projects/project-1/vault"}); err != nil {
+	if _, err := memory.RegisterProject(context.Background(), workspace.Project{ID: "project-1", Name: "Project", RepositoryRoot: repoRoot1, VaultRoot: vaultRoot1}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -55,8 +68,8 @@ func TestCockpitBridgeContracts(t *testing.T) {
 		SchemaVersion:  CockpitBridgeSchemaVersion,
 		ID:             "project-2",
 		Name:           "Project Two",
-		RepositoryRoot: "C:/Projects/project-2",
-		VaultRoot:      "C:/Projects/project-2/vault",
+		RepositoryRoot: repoRoot2,
+		VaultRoot:      vaultRoot2,
 		DefaultBranch:  "main",
 	})
 	if err != nil {
@@ -113,6 +126,9 @@ func TestCockpitBridgeErrorCodes(t *testing.T) {
 func TestCockpitWorkspaceFiltersByProject(t *testing.T) {
 	t.Parallel()
 
+	repoRoot1, vaultRoot1 := tempProjectRoot(t, "project-1")
+	repoRoot2, vaultRoot2 := tempProjectRoot(t, "project-2")
+
 	memory := workspace.NewMemoryWorkspace()
 	service, err := workspace.NewService(workspace.Dependencies{
 		State: memory, Projects: memory, Worktrees: memory, Retrieval: memory,
@@ -120,10 +136,10 @@ func TestCockpitWorkspaceFiltersByProject(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := memory.RegisterProject(context.Background(), workspace.Project{ID: "project-1", Name: "Project One", RepositoryRoot: "C:/Projects/project-1", VaultRoot: "C:/Projects/project-1/vault"}); err != nil {
+	if _, err := memory.RegisterProject(context.Background(), workspace.Project{ID: "project-1", Name: "Project One", RepositoryRoot: repoRoot1, VaultRoot: vaultRoot1}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := memory.RegisterProject(context.Background(), workspace.Project{ID: "project-2", Name: "Project Two", RepositoryRoot: "C:/Projects/project-2", VaultRoot: "C:/Projects/project-2/vault"}); err != nil {
+	if _, err := memory.RegisterProject(context.Background(), workspace.Project{ID: "project-2", Name: "Project Two", RepositoryRoot: repoRoot2, VaultRoot: vaultRoot2}); err != nil {
 		t.Fatal(err)
 	}
 

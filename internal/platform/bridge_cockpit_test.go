@@ -2,6 +2,7 @@ package platform
 
 import (
 	"context"
+	"path/filepath"
 	"testing"
 
 	"github.com/RahmatHadinata23758051/CortexOS/internal/cortex/application"
@@ -10,6 +11,9 @@ import (
 
 func TestCockpitBridgeExposesRuntimeAndWorkspace(t *testing.T) {
 	t.Parallel()
+
+	repoRoot := filepath.Join(t.TempDir(), "project-1")
+	vaultRoot := filepath.Join(repoRoot, "vault")
 
 	memory := workspace.NewMemoryWorkspace()
 	service, err := workspace.NewService(workspace.Dependencies{
@@ -21,8 +25,8 @@ func TestCockpitBridgeExposesRuntimeAndWorkspace(t *testing.T) {
 	if _, err := memory.RegisterProject(context.Background(), workspace.Project{
 		ID:             "project-1",
 		Name:           "Project",
-		RepositoryRoot: "C:/Projects/project-1",
-		VaultRoot:      "C:/Projects/project-1/vault",
+		RepositoryRoot: repoRoot,
+		VaultRoot:      vaultRoot,
 	}); err != nil {
 		t.Fatal(err)
 	}

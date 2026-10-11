@@ -3,6 +3,7 @@ package git
 import (
 	"context"
 	"errors"
+	"path/filepath"
 	"testing"
 
 	"github.com/RahmatHadinata23758051/CortexOS/internal/cortex/workspace"
@@ -30,15 +31,16 @@ func (r *scriptedRunner) Run(_ context.Context, _ ...string) ([]byte, []byte, er
 func TestInspectRepositoryParsesFacts(t *testing.T) {
 	t.Parallel()
 
+	repoRoot := filepath.Join(t.TempDir(), "repo")
 	runner := &scriptedRunner{steps: []scriptedStep{
-		{stdout: "C:\\workspace\\repo\n"},
+		{stdout: repoRoot + "\n"},
 		{stdout: "feature/demo\n"},
 	}}
 	adapter, err := NewWithRunner(runner)
 	if err != nil {
 		t.Fatal(err)
 	}
-	facts, err := adapter.InspectRepository(context.Background(), `C:\workspace\repo`)
+	facts, err := adapter.InspectRepository(context.Background(), repoRoot)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -55,7 +57,7 @@ func TestInspectRepositoryRejectsNonGitOutput(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = adapter.InspectRepository(context.Background(), `C:\workspace\repo`)
+	_, err = adapter.InspectRepository(context.Background(), filepath.Join(t.TempDir(), "repo"))
 	if workspace.ErrorCodeOf(err) != workspace.ErrNotGitRepository {
 		t.Fatalf("error code = %q, want %q", workspace.ErrorCodeOf(err), workspace.ErrNotGitRepository)
 	}
