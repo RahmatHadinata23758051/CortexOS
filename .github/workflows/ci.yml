@@ -44,6 +44,24 @@ jobs:
       - name: go test -race
         run: go test -race ./...
 
+  go-macos:
+    name: Go (macOS, race detector)
+    runs-on: macos-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: go vet
+        run: go vet ./...
+
+      - name: go test -race
+        run: go test -race ./...
+
   frontend:
     name: Frontend
     runs-on: ubuntu-latest
