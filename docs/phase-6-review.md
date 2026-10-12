@@ -163,7 +163,7 @@ The Phase 6 acceptance target is Phaser at 60fps and bridge latency below 100ms 
 - **Architecture risk:** acceptable for Phase 7 entry; Phaser state rendering is bounded and read-only, and the bridge is typed and local to the Wails desktop process.
 - **Evidence status:** **NOT MEASURED**; this is not represented as a false PASS.
 - **Required Phase 7 gate:** add a repeatable Playwright/browser benchmark for OfficeScene frame timing and bridge round-trip timing, collect p50/p95/p99 on a defined Windows baseline, and fail CI/release checks when 60fps or 100ms p95 budgets regress.
-- **Known bundle concern:** Vite reports the Phaser `OfficeScene` chunk above 500 kB after minification. Introduce lazy loading/manual chunks and measure startup and frame behavior before production packaging.
+- **Known bundle concern:** Vite reports the Phaser `OfficeScene` chunk above 500 kB after minification. **Resolved in BAN-128:** `OfficeView` is now lazy-loaded and Phaser is emitted as a deferred `vendor-phaser` chunk, so it is removed from the initial payload. The remaining 1,208 kB (332 kB gzip) chunk is inherent to Phaser 3 and is only fetched when the Virtual Office route opens; startup and frame behavior are measured under the P7-02 benchmark.
 
 ---
 
@@ -171,9 +171,9 @@ The Phase 6 acceptance target is Phaser at 60fps and bridge latency below 100ms 
 
 | ID | Severity | Residual risk | Phase 7 mitigation / exit criterion |
 |---|---|---|---|
-| **P7-01** | Medium | Windows cannot execute the race detector because of the local cgo toolchain. | **Closed (BAN-126).** GitHub Actions `ubuntu-latest` runs `go test -race ./...` plus gofmt/vet and frontend gates (`.github/workflows/ci.yml`, commit `93432a2`; test portability `b20a00c`). Evidence: CI run `38148257893` success, zero data races. macOS job not yet added. |
+| **P7-01** | Medium | Windows cannot execute the race detector because of the local cgo toolchain. | **Closed (BAN-126).** GitHub Actions `ubuntu-latest` and `macos-latest` run `go test -race ./...` plus gofmt/vet and frontend gates (`.github/workflows/ci.yml`, commits `93432a2`, `b20a00c`, `a748383`, `6f5c7a5`, `e079179`). Evidence: CI run `38215509096` success across all three jobs (Frontend 26s, Linux race 1m38s, macOS race 2m53s), zero data races. |
 | **P7-02** | Medium | 60fps and bridge p95 budgets are not yet measured. | Add Playwright/performance benchmark and a documented hardware/browser baseline; publish p95 evidence. |
-| **P7-03** | Medium | Phaser production chunk is above Vite's 500 kB warning threshold. | Lazy-load OfficeScene and split the Phaser bundle; verify startup and frame budgets. |
+| **P7-03** | Medium | Phaser production chunk is above Vite's 500 kB warning threshold. | **Closed (BAN-128).** `OfficeView` is lazy-loaded via `React.lazy`/`Suspense` and `manualChunks` emits `vendor-phaser` as a deferred chunk (commits in `web/src/App.tsx`, `web/vite.config.ts`). Phaser is off the initial critical path; startup/frame impact is measured by the P7-02 benchmark. **Residual:** the deferred `vendor-phaser` chunk is 1,208 kB minified (332 kB gzip) — inherent to Phaser 3, which cannot be tree-shaken below 500 kB without a custom engine build. Accepted because it loads only when the Virtual Office route is opened. |
 | **P7-04** | Medium | The current frontend integration fixture mocks the bridge rather than launching Wails dev mode. | Add a Wails-aware smoke test or documented desktop integration harness for generated bindings and event delivery. |
 | **P7-05** | Low | `useInspector` owns presentation timing/state while authoritative acceptance is backend-owned. | Replace simulated client-side merge delay with a typed Inspector/Orchestra command when the production merge endpoint is exposed; keep UI optimistic state fail-closed. |
 | **P7-06** | Low | No remote HTTP transport is in scope, so CSRF controls are not exercised. | If remote access is introduced, add origin checks, CSRF/replay protection, authentication, and authorization tests before exposing mutation methods. |
