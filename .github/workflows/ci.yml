@@ -69,7 +69,13 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [windows-latest, macos-latest, ubuntu-latest]
+        include:
+          - os: windows-latest
+            platform: windows/amd64
+          - os: macos-latest
+            platform: darwin/universal
+          - os: ubuntu-latest
+            platform: linux/amd64
     steps:
       - uses: actions/checkout@v4
 
@@ -95,7 +101,7 @@ jobs:
         run: go install github.com/wailsapp/wails/v2/cmd/wails@v2.16.0
 
       - name: Build packaged binary
-        run: wails build -clean -nopackage
+        run: wails build -clean -nopackage -platform ${{ matrix.platform }}
 
       - name: Packaged smoke (Windows)
         if: runner.os == 'Windows'
