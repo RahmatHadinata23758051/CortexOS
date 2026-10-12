@@ -17,7 +17,12 @@ func TestControlledWorktreeLifecycleAgainstDisposableRepository(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	root := t.TempDir()
+	// Git reports symlink-resolved paths (macOS /var -> /private/var); resolve the
+	// fixture root so listed worktree paths compare equal to the requested ones.
+	root, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
 	repositoryRoot := filepath.Join(root, "repository")
 	if err := os.MkdirAll(repositoryRoot, 0o755); err != nil {
 		t.Fatal(err)

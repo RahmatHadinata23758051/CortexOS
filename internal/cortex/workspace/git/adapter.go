@@ -433,8 +433,11 @@ func (a *Adapter) approvedTarget(projectID workspace.ProjectID, target string) (
 	if err != nil {
 		return "", err
 	}
-	relative, err := filepath.Rel(projectRoot, canonicalTarget)
-	if err != nil || relative == "." || filepath.IsAbs(relative) || strings.HasPrefix(relative, ".."+string(filepath.Separator)) || relative == ".." {
+	// Git and the filesystem report symlink-resolved paths (macOS: /var -> /private/var),
+	// so a purely lexical Rel() check against the unresolved root can falsely reject
+	// valid targets. Containment is enforced physically below; here only reject the
+	// project root itself, which must never be used as a worktree target.
+	if samePath(canonicalTarget, projectRoot) {
 		return "", workspace.NewError(workspace.ErrPathDenied, "worktree path is outside the approved worktree root")
 	}
 	if err := verifyExistingContainment(projectRoot, canonicalTarget); err != nil {
