@@ -62,6 +62,46 @@ jobs:
       - name: go test -race
         run: go test -race ./...
 
+  desktop:
+    name: Desktop package (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest, ubuntu-latest]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install Wails Linux dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.1-dev
+
+      - name: Install Wails CLI
+        run: go install github.com/wailsapp/wails/v2/cmd/wails@v2.16.0
+
+      - name: Build packaged binary
+        run: wails build -clean -nopackage
+
+      - name: Packaged smoke (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: ./scripts/smoke-wails-packaged.ps1 -SkipBuild -Output build/bin/cortexos.exe -TimeoutSeconds 180
+
   frontend:
     name: Frontend
     runs-on: ubuntu-latest
