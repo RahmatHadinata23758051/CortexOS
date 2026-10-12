@@ -22,7 +22,12 @@ import (
 // TestHarnessFullPathFixture is the disposable Phase 4 quality gate. It uses
 // only in-memory fakes and a temporary worktree, so it is provider-independent.
 func TestHarnessFullPathFixture(t *testing.T) {
-	root := t.TempDir()
+	// Resolve symlinks (macOS /var -> /private/var) so returned canonical paths
+	// share the same prefix as the fixture root.
+	root, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
 	worktree := filepath.Join(root, "worktree")
 	if err := os.Mkdir(worktree, 0o755); err != nil {
 		t.Fatal(err)

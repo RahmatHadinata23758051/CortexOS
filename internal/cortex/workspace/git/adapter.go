@@ -171,6 +171,20 @@ func samePath(left, right string) bool {
 	if filepath.VolumeName(left) != filepath.VolumeName(right) {
 		return false
 	}
+	if equalCleanPaths(left, right) {
+		return true
+	}
+	// Git reports symlink-resolved roots (macOS: /var -> /private/var), while callers
+	// may hold the unresolved form. Compare resolved identities as a fallback.
+	resolvedLeft, leftErr := filepath.EvalSymlinks(left)
+	resolvedRight, rightErr := filepath.EvalSymlinks(right)
+	if leftErr != nil || rightErr != nil {
+		return false
+	}
+	return equalCleanPaths(resolvedLeft, resolvedRight)
+}
+
+func equalCleanPaths(left, right string) bool {
 	if filepath.Separator == '\\' {
 		return strings.EqualFold(filepath.Clean(left), filepath.Clean(right))
 	}

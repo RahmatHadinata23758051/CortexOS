@@ -83,6 +83,17 @@ func TestWatcherCreateDirectoryAndDeleteEvents(t *testing.T) {
 	if err := os.WriteFile(file, []byte("body\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
+	// kqueue (macOS) only tracks files after it has observed them. Wait for the
+	// create to be delivered before deleting, so the delete cannot race ahead of
+	// registration and go unreported.
+	select {
+	case change := <-changes:
+		if change.RelativePath != "nested/note.md" {
+			t.Fatalf("file change = %#v", change)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for nested file create")
+	}
 	if err := os.Remove(file); err != nil {
 		t.Fatal(err)
 	}

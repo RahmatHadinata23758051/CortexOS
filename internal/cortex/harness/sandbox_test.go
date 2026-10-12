@@ -18,7 +18,13 @@ func tempDir(t *testing.T) string {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { os.RemoveAll(dir) })
-	return dir
+	// Sandbox roots are canonicalized through symlinks; on macOS /var resolves to
+	// /private/var. Return the resolved form so comparisons match canonical output.
+	resolved, err := filepath.EvalSymlinks(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return resolved
 }
 
 func mustSandbox(root string) *ExecutionSandbox {
