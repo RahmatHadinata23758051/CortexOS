@@ -1,6 +1,7 @@
 import {
   orchestraSchemaVersion,
   type OrchestraBridge,
+  type OrchestraMergeResult,
   type OrchestraTaskDetail,
   type OrchestraTaskListRequest,
   type OrchestraTaskRequest,
@@ -48,6 +49,18 @@ export function cancelOrchestraTask(bridge: OrchestraBridge, taskId: string): Pr
 
 export function retryOrchestraTask(bridge: OrchestraBridge, taskId: string): Promise<void> {
   return bridge.RetryOrchestraTask({ schemaVersion: orchestraSchemaVersion, taskId })
+}
+
+export async function mergeOrchestraTask(bridge: OrchestraBridge, taskId: string, note = ''): Promise<OrchestraMergeResult> {
+  const result = await bridge.MergeOrchestraTask({
+    schemaVersion: orchestraSchemaVersion,
+    taskId,
+    ...(note.trim() ? { note: note.trim() } : {}),
+  })
+  if (!result || result.taskId !== taskId || result.schemaVersion !== orchestraSchemaVersion || result.status !== 'success') {
+    throw new Error('CortexOS returned a non-authoritative merge result')
+  }
+  return result
 }
 
 function normalizeOrchestraError(error: unknown): { status: 'error'; code: string; message: string } {

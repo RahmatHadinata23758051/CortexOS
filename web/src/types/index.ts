@@ -62,6 +62,7 @@ export const wailsRuntimeBridge: FullBridge = {
   GetOrchestraTask: (request) => getWailsBridge().GetOrchestraTask(request),
   CancelOrchestraTask: (request) => getWailsBridge().CancelOrchestraTask(request),
   RetryOrchestraTask: (request) => getWailsBridge().RetryOrchestraTask(request),
+  MergeOrchestraTask: (request) => getWailsBridge().MergeOrchestraTask(request),
   ListKnowledgeSources: (request) => getWailsBridge().ListKnowledgeSources(request),
   QueryKnowledge: (request) => getWailsBridge().QueryKnowledge(request),
   ListHarnessCapabilities: (request) => getWailsBridge().ListHarnessCapabilities(request),

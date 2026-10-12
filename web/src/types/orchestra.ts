@@ -47,11 +47,28 @@ export type OrchestraTaskRequest = {
   taskId: string
 }
 
+export type OrchestraMergeRequest = {
+  schemaVersion: typeof orchestraSchemaVersion
+  taskId: string
+  note?: string
+}
+
+/**
+ * Backend-authoritative merge outcome. The UI may only treat a merge as
+ * complete when `status` is `success`; anything else stays fail-closed.
+ */
+export type OrchestraMergeResult = {
+  taskId: string
+  status: OrchestraTaskStatus
+  schemaVersion: typeof orchestraSchemaVersion
+}
+
 export type OrchestraBridge = {
   ListOrchestraTasks(request: OrchestraTaskListRequest): Promise<OrchestraTaskSummary[]>
   GetOrchestraTask(request: OrchestraTaskRequest): Promise<OrchestraTaskDetail>
   CancelOrchestraTask(request: OrchestraTaskRequest): Promise<void>
   RetryOrchestraTask(request: OrchestraTaskRequest): Promise<void>
+  MergeOrchestraTask(request: OrchestraMergeRequest): Promise<OrchestraMergeResult>
 }
 
 export function isOrchestraTaskStatus(value: unknown): value is OrchestraTaskStatus {

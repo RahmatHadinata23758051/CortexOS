@@ -5,6 +5,7 @@ import {
   getOrchestraTask,
   loadOrchestraTasks,
   onOrchestraEvent,
+  mergeOrchestraTask,
   onOrchestraTaskChanged,
   retryOrchestraTask,
 } from './orchestra'
@@ -47,6 +48,11 @@ const mockBridge = (): OrchestraBridge => ({
   GetOrchestraTask: vi.fn().mockResolvedValue(validDetail),
   CancelOrchestraTask: vi.fn().mockResolvedValue(undefined),
   RetryOrchestraTask: vi.fn().mockResolvedValue(undefined),
+  MergeOrchestraTask: vi.fn().mockResolvedValue({
+    taskId: 'task-1',
+    status: 'success',
+    schemaVersion: orchestraSchemaVersion,
+  }),
 })
 
 describe('orchestra bridge operations', () => {
@@ -133,6 +139,52 @@ describe('orchestra bridge operations', () => {
     expect(bridge.RetryOrchestraTask).toHaveBeenCalledWith({
       schemaVersion: orchestraSchemaVersion,
       taskId: 'task-1',
+    })
+  })
+
+  it('merges only through the backend command and accepts authoritative success', async () => {
+    const bridge = mockBridge()
+    const result = await mergeOrchestraTask(bridge, 'task-1', '  evidence reviewed  ')
+    expect(result).toEqual({ taskId: 'task-1', status: 'success', schemaVersion: orchestraSchemaVersion })
+    expect(bridge.MergeOrchestraTask).toHaveBeenCalledWith({
+      schemaVersion: orchestraSchemaVersion,
+      taskId: 'task-1',
+      note: 'evidence reviewed',
+    })
+  })
+
+  it('fails closed when the backend does not report success', async () => {
+    const bridge = mockBridge()
+    vi.mocked(bridge.MergeOrchestraTask).mockResolvedValue({
+      taskId: 'task-1',
+      status: 'awaitingInspection',
+      schemaVersion: orchestraSchemaVersion,
+    })
+    await expect(mergeOrchestraTask(bridge, 'task-1')).rejects.toThrow(
+      'CortexOS returned a non-authoritative merge result',
+    )
+  })
+
+  it('fails closed on mismatched task identity', async () => {
+    const bridge = mockBridge()
+    vi.mocked(bridge.MergeOrchestraTask).mockResolvedValue({
+      taskId: 'other-task',
+      status: 'success',
+      schemaVersion: orchestraSchemaVersion,
+    })
+    await expect(mergeOrchestraTask(bridge, 'task-1')).rejects.toThrow(
+      'CortexOS returned a non-authoritative merge result',
+    )
+  })
+
+  it('propagates backend rejection without marking merge complete', async () => {
+    const bridge = mockBridge()
+    vi.mocked(bridge.MergeOrchestraTask).mockRejectedValue({
+      code: 'orchestra.inspection_rejected',
+      message: 'orchestra merge requires Inspector acceptance',
+    })
+    await expect(mergeOrchestraTask(bridge, 'task-1')).rejects.toMatchObject({
+      code: 'orchestra.inspection_rejected',
     })
   })
 })
