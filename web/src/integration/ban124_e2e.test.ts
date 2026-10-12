@@ -3,10 +3,11 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it, vi } from 'vitest'
 
 import { InspectorReview } from '../components/inspector/InspectorReview'
-import { getOrchestraTask, loadOrchestraTasks, mergeOrchestraTask } from '../bridge/orchestra' 
+import { getOrchestraTask, loadOrchestraTasks, mergeOrchestraTask } from '../bridge/orchestra'
 import {
   orchestraSchemaVersion,
   type OrchestraBridge,
+  type OrchestraMergeResult,
   type OrchestraTaskDetail,
   type OrchestraTaskStatus,
   type OrchestraTaskSummary,
@@ -81,7 +82,7 @@ function createFakeBackend(taskId: string, projectId: string) {
       if (status !== 'failed') throw new Error('only failed tasks can be retried')
       status = 'ready'
     }),
-    MergeOrchestraTask: vi.fn(async (request) => {
+    MergeOrchestraTask: vi.fn(async (request): Promise<OrchestraMergeResult> => {
       if (request.taskId !== taskId) throw new Error('task not found')
       if (status !== 'awaitingInspection') {
         throw new Error('orchestra merge requires Inspector acceptance')
