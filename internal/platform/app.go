@@ -4,7 +4,10 @@ import (
 	"context"
 	"fmt"
 	"io/fs"
+	"os"
+	"strconv"
 	"sync"
+	"time"
 
 	"github.com/wailsapp/wails/v2/pkg/application"
 	"github.com/wailsapp/wails/v2/pkg/options"
@@ -87,6 +90,28 @@ func (a *Application) handleStartup(ctx context.Context) {
 			hook(ctx)
 		}
 	}
+	// P7-07 packaged smoke harness: when CORTEXOS_SMOKE_QUIT_MS is set, schedule
+	// a clean shutdown after the desktop shell and startup hooks finish.
+	// Normal production runs leave the variable unset.
+	if delay, ok := smokeQuitDelay(os.Getenv("CORTEXOS_SMOKE_QUIT_MS")); ok {
+		go func() {
+			time.Sleep(delay)
+			a.Shutdown()
+		}()
+	}
+}
+
+// smokeQuitDelay parses the smoke-only auto-quit delay. It reports ok=false for
+// unset, empty, or invalid values so normal runs never auto-exit.
+func smokeQuitDelay(raw string) (time.Duration, bool) {
+	if raw == "" {
+		return 0, false
+	}
+	ms, err := strconv.Atoi(raw)
+	if err != nil || ms < 0 {
+		return 0, false
+	}
+	return time.Duration(ms) * time.Millisecond, true
 }
 
 func (a *Application) handleShutdown(ctx context.Context) {
