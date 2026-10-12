@@ -17,6 +17,7 @@ type orchestraPortStub struct {
 	err      error
 	canceled orchestra.TaskID
 	retried  orchestra.TaskID
+	merged   orchestra.TaskID
 }
 
 func (s *orchestraPortStub) ListTasks(context.Context) ([]orchestra.Task, error) {
@@ -40,6 +41,19 @@ func (s *orchestraPortStub) CancelTask(_ context.Context, id orchestra.TaskID) e
 func (s *orchestraPortStub) RetryTask(_ context.Context, id orchestra.TaskID) error {
 	s.retried = id
 	return s.err
+}
+func (s *orchestraPortStub) MergeTask(_ context.Context, id orchestra.TaskID, _ string) (orchestra.Task, error) {
+	s.merged = id
+	if s.err != nil {
+		return orchestra.Task{}, s.err
+	}
+	for _, task := range s.tasks {
+		if task.ID == id {
+			task.Status = orchestra.TaskSuccess
+			return task, nil
+		}
+	}
+	return orchestra.Task{}, orchestra.ErrNotFound
 }
 
 func TestOrchestraBridgeReturnsStablePathFreeDTOs(t *testing.T) {
@@ -112,5 +126,53 @@ func TestOrchestraBridgeMapsUnavailableAndInvalidRequests(t *testing.T) {
 	var invalid *OrchestraBridgeError
 	if !errors.As(err, &invalid) || invalid.Code != "orchestra.invalid_request" {
 		t.Fatalf("invalid error = %#v", err)
+	}
+}
+
+func TestOrchestraMergeBridgeReturnsAcceptedTask(t *testing.T) {
+	stub := &orchestraPortStub{tasks: []orchestra.Task{{
+		ID: "task-1", ProjectID: "project-1", WorktreeID: "worktree-1", Title: "task",
+		AcceptanceCriteria: []string{"criterion"}, Status: orchestra.TaskAwaitingInspection,
+		AttemptCount: 1, MaxAttempts: 2,
+	}}}
+	service := NewServiceWithOrchestra(stub)
+	result, err := service.MergeOrchestraTask(context.Background(), OrchestraMergeRequest{
+		SchemaVersion: OrchestraBridgeSchemaVersion, TaskID: "task-1", Note: "evidence verified",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stub.merged != "task-1" {
+		t.Fatalf("merged task = %q", stub.merged)
+	}
+	if result.TaskID != "task-1" || result.Status != string(orchestra.TaskSuccess) || result.SchemaVersion != OrchestraBridgeSchemaVersion {
+		t.Fatalf("merge result = %#v", result)
+	}
+}
+
+func TestOrchestraMergeBridgeFailsClosed(t *testing.T) {
+	service := NewService()
+	_, err := service.MergeOrchestraTask(context.Background(), OrchestraMergeRequest{SchemaVersion: OrchestraBridgeSchemaVersion, TaskID: "task-1"})
+	var unavailable *OrchestraBridgeError
+	if !errors.As(err, &unavailable) || unavailable.Code != "orchestra.storage_unavailable" {
+		t.Fatalf("unwired merge error = %#v", err)
+	}
+
+	service = NewServiceWithOrchestra(&orchestraPortStub{err: orchestra.ErrInspectionRejected})
+	_, err = service.MergeOrchestraTask(context.Background(), OrchestraMergeRequest{SchemaVersion: OrchestraBridgeSchemaVersion, TaskID: "task-1"})
+	var rejected *OrchestraBridgeError
+	if !errors.As(err, &rejected) || rejected.Code != "orchestra.inspection_rejected" {
+		t.Fatalf("rejected merge error = %#v", err)
+	}
+
+	service = NewServiceWithOrchestra(&orchestraPortStub{})
+	_, err = service.MergeOrchestraTask(context.Background(), OrchestraMergeRequest{SchemaVersion: OrchestraBridgeSchemaVersion})
+	if !errors.As(err, &rejected) || rejected.Code != "orchestra.invalid_request" {
+		t.Fatalf("empty task error = %#v", err)
+	}
+
+	_, err = service.MergeOrchestraTask(context.Background(), OrchestraMergeRequest{SchemaVersion: "wrong", TaskID: "task-1"})
+	if !errors.As(err, &rejected) || rejected.Code != "orchestra.unsupported_version" {
+		t.Fatalf("version error = %#v", err)
 	}
 }

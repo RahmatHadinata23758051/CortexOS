@@ -22,6 +22,7 @@ type OrchestraPort interface {
 	ListEvents(context.Context, orchestra.TaskID) ([]orchestra.TaskEvent, error)
 	CancelTask(context.Context, orchestra.TaskID) error
 	RetryTask(context.Context, orchestra.TaskID) error
+	MergeTask(context.Context, orchestra.TaskID, string) (orchestra.Task, error)
 }
 
 type OrchestraTaskListRequest struct {
@@ -33,6 +34,22 @@ type OrchestraTaskListRequest struct {
 type OrchestraTaskRequest struct {
 	SchemaVersion string `json:"schemaVersion"`
 	TaskID        string `json:"taskId"`
+}
+
+// OrchestraMergeRequest asks Orchestra to merge a task. The caller supplies
+// only an identifier and an optional review note; Inspector evidence and the
+// authoritative transition are resolved on the backend.
+type OrchestraMergeRequest struct {
+	SchemaVersion string `json:"schemaVersion"`
+	TaskID        string `json:"taskId"`
+	Note          string `json:"note,omitempty"`
+}
+
+// OrchestraMergeResult reports the backend-authoritative outcome of a merge.
+type OrchestraMergeResult struct {
+	TaskID        string `json:"taskId"`
+	Status        string `json:"status"`
+	SchemaVersion string `json:"schemaVersion"`
 }
 
 type OrchestraTaskSummary struct {
@@ -159,6 +176,29 @@ func (s *Service) RetryOrchestraTask(ctx context.Context, request OrchestraTaskR
 	return mapOrchestraError(s.orchestra.RetryTask(ctx, orchestra.TaskID(request.TaskID)))
 }
 
+// MergeOrchestraTask forwards a merge request to the Orchestra port. The port
+// is the only place that may transition a task to success, and it must require
+// MergeAuthority acceptance (ADR-0005). With no port wired, the command fails
+// closed with orchestra.storage_unavailable.
+func (s *Service) MergeOrchestraTask(ctx context.Context, request OrchestraMergeRequest) (OrchestraMergeResult, error) {
+	if err := validateOrchestraSchema(request.SchemaVersion); err != nil {
+		return OrchestraMergeResult{}, err
+	}
+	if request.TaskID == "" {
+		return OrchestraMergeResult{}, orchestraBridgeError(orchestra.ErrInvalidTask)
+	}
+	if s == nil || s.orchestra == nil {
+		return OrchestraMergeResult{}, orchestraBridgeError(orchestra.ErrStoreUnavailable)
+	}
+	task, err := s.orchestra.MergeTask(ctx, orchestra.TaskID(request.TaskID), request.Note)
+	if err != nil {
+		return OrchestraMergeResult{}, mapOrchestraError(err)
+	}
+	return OrchestraMergeResult{
+		TaskID: string(task.ID), Status: string(task.Status), SchemaVersion: OrchestraBridgeSchemaVersion,
+	}, nil
+}
+
 func validateOrchestraSchema(version string) error {
 	if version != OrchestraBridgeSchemaVersion {
 		return &OrchestraBridgeError{Code: "orchestra.unsupported_version", Message: "orchestra bridge contract version is unsupported"}
@@ -247,6 +287,8 @@ func orchestraBridgeError(err error) error {
 		code = "orchestra.terminal"
 	case errors.Is(err, orchestra.ErrDependencyCycle), errors.Is(err, orchestra.ErrMissingDependency), errors.Is(err, orchestra.ErrInvalidGraph):
 		code = "orchestra.invalid_graph"
+	case errors.Is(err, orchestra.ErrInspectionRejected), errors.Is(err, orchestra.ErrMissingEvidence), errors.Is(err, orchestra.ErrSelfReportedSuccess):
+		code = "orchestra.inspection_rejected"
 	}
 	messages := map[string]string{
 		"orchestra.not_found":           "orchestra task was not found",
@@ -255,6 +297,7 @@ func orchestraBridgeError(err error) error {
 		"orchestra.storage_unavailable": "orchestra state is unavailable",
 		"orchestra.terminal":            "orchestra task is terminal",
 		"orchestra.invalid_graph":       "orchestra task graph is invalid",
+		"orchestra.inspection_rejected": "orchestra merge requires Inspector acceptance",
 	}
 	message := messages[code]
 	if message == "" {

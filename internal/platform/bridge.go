@@ -96,6 +96,12 @@ func (b *Bridge) RetryOrchestraTask(request application.OrchestraTaskRequest) er
 	return b.service.RetryOrchestraTask(b.getContext(), request)
 }
 
+// MergeOrchestraTask exposes the Inspector-gated merge command to Wails.
+// Business rules remain in the application and Orchestra layers.
+func (b *Bridge) MergeOrchestraTask(request application.OrchestraMergeRequest) (application.OrchestraMergeResult, error) {
+	return b.service.MergeOrchestraTask(b.getContext(), request)
+}
+
 // ListHarnessCapabilities exposes safe Harness capability metadata.
 func (b *Bridge) ListHarnessCapabilities(request application.HarnessCapabilitiesRequest) ([]application.HarnessCapabilitySummary, error) {
 	return b.service.ListHarnessCapabilities(b.getContext(), request)
