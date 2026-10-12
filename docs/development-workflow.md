@@ -56,6 +56,7 @@ Inspect staged paths and confirm no secret, raw harvest clone, build output, dep
 | Go format/test | `gofmt -l .`, `go test ./...` | All packages pass; zero formatting defects on edited files |
 | Go static analysis | `go vet ./...` | Clean pass across internal packages |
 | Frontend checks | `npm run typecheck`, `npm run lint`, `npm test`, `npm run build` | Zero TypeScript, ESLint, Vitest, or bundle build failures |
+| Windows performance gate | `npm run benchmark` in `web/` | Playwright OfficeScene and bridge p95 budgets pass; JSON evidence is uploaded by CI |
 | End-to-end fixtures | `go test ./internal/cortex/orchestra/ -run TestBAN124`, `vitest run src/integration/ban124_e2e.test.ts` | Phase 6 Cockpit/Inspector/Merge/Plan-update chain verified end-to-end |
 | Documentation review | Manual link/scope/ADR check | Contract agrees with current architecture |
 
