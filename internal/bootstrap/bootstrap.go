@@ -91,6 +91,8 @@ func Run() error {
 
 	service := application.NewServiceWithWorkspace(workspaceService)
 	app := platform.New()
-	app.Bind(platform.NewBridge(service))
+	bridge := platform.NewBridge(service)
+	app.OnStartup(bridge.SetRuntimeContext)
+	app.Bind(bridge)
 	return app.Run()
 }
