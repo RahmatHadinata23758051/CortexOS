@@ -11,113 +11,51 @@ import (
 )
 
 // TestNoUnreviewedRemoteTransport implements Phase 7 gate P7-06 (BAN-131).
-// CortexOS is a local-first desktop application with IPC confined to the
-// in-process Wails runtime. If a remote HTTP/TCP transport is ever added,
-// it must undergo formal security threat modeling (origin validation,
-// CSRF protection, authentication, authorization, and replay defense)
-// before merging. This test fails if any production Go source imports
-// net/http or calls network listener primitives without explicit review.
+// CortexOS is local-first: IPC stays inside the in-process Wails runtime. Any
+// remote HTTP/TCP transport needs a security review (origin checks, CSRF,
+// authentication, authorization, replay defense) before it can merge. This
+// test fails when production Go code imports net/http or opens a raw listener.
 func TestNoUnreviewedRemoteTransport(t *testing.T) {
 	t.Parallel()
 
-	repoRoot := findRepoRoot(t)
-	productionDirs := []string{
-		filepath.Join(repoRoot, "cmd"),
-		filepath.Join(repoRoot, "internal"),
-	}
-
-	fset := token.NewFileSet()
-	var violations []string
-
-	for _, dir := range productionDirs {
-		err := filepath.WalkDir(dir, func(path string, d fs.DirEntry, walkErr error) error {
-			if walkErr != nil {
-				return walkErr
-			}
-			if d.IsDir() {
-				// Skip hidden or testdata directories
-				if strings.HasPrefix(d.Name(), ".") || d.Name() == "testdata" {
-					return filepath.SkipDir
-				}
-				return nil
-			}
-			if !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
-				return nil
-			}
-
-			node, err := parser.ParseFile(fset, path, nil, parser.ImportsOnly)
-			if err != nil {
-				t.Fatalf("failed to parse %s: %v", path, err)
-			}
-
-			relPath, _ := filepath.Rel(repoRoot, path)
-			for _, imp := range node.Imports {
-				pkg := strings.Trim(imp.Path.Value, `"`)
-				if pkg == "net/http" {
-					violations = append(violations, relPath+": imports net/http (requires P7-06 security review)")
-				}
-			}
-			return nil
-		})
-		if err != nil {
-			t.Fatalf("walk failed on %s: %v", dir, err)
-		}
-	}
-
+	violations := scanTreeForTransport(findRepoRoot(t))
 	if len(violations) > 0 {
-		t.Fatalf("P7-06 regression: unreviewed remote transport detected:\n%s\nSee docs/specs/ban131-remote-transport-guard.md", strings.Join(violations, "\n"))
+		t.Fatalf("P7-06 regression: unreviewed remote transport:\n%s\nSee docs/specs/ban131-remote-transport-guard.md", strings.Join(violations, "\n"))
 	}
 }
 
-// TestNoUnreviewedNetworkListeners scans production code for raw listener calls.
-func TestNoUnreviewedNetworkListeners(t *testing.T) {
-	t.Parallel()
-
-	repoRoot := findRepoRoot(t)
-	productionDirs := []string{
-		filepath.Join(repoRoot, "cmd"),
-		filepath.Join(repoRoot, "internal"),
-	}
-
+func scanTreeForTransport(root string) []string {
+	fset := token.NewFileSet()
 	var violations []string
-
-	for _, dir := range productionDirs {
-		err := filepath.WalkDir(dir, func(path string, d fs.DirEntry, walkErr error) error {
-			if walkErr != nil {
+	for _, productionDir := range []string{"internal", "cmd"} {
+		_ = filepath.WalkDir(filepath.Join(root, productionDir), func(path string, d fs.DirEntry, walkErr error) error {
+			if walkErr != nil || d.IsDir() || !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
 				return walkErr
 			}
-			if d.IsDir() || !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
+			node, err := parser.ParseFile(fset, path, nil, parser.ImportsOnly)
+			if err != nil {
+				violations = append(violations, path+": parse error")
 				return nil
 			}
-
+			for _, imp := range node.Imports {
+				if strings.Trim(imp.Path.Value, `"`) == "net/http" {
+					violations = append(violations, path+": imports net/http")
+				}
+			}
 			data, err := os.ReadFile(path)
 			if err != nil {
-				return err
+				violations = append(violations, path+": read error")
+				return nil
 			}
-			src := string(data)
-			relPath, _ := filepath.Rel(repoRoot, path)
-
-			forbidden := []string{
-				"net.Listen(",
-				"net.ListenTCP(",
-				"http.ListenAndServe(",
-				"http.ListenAndServeTLS(",
-			}
-			for _, pat := range forbidden {
-				if strings.Contains(src, pat) {
-					violations = append(violations, relPath+": contains "+pat)
+			for _, pattern := range []string{"net.Listen(", "net.ListenTCP(", "http.ListenAndServe(", "http.ListenAndServeTLS("} {
+				if strings.Contains(string(data), pattern) {
+					violations = append(violations, path+": contains "+pattern)
 				}
 			}
 			return nil
 		})
-		if err != nil {
-			t.Fatalf("walk failed on %s: %v", dir, err)
-		}
 	}
-
-	if len(violations) > 0 {
-		t.Fatalf("P7-06 regression: raw network listener found:\n%s", strings.Join(violations, "\n"))
-	}
+	return violations
 }
 
 func findRepoRoot(t *testing.T) string {
