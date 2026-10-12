@@ -171,7 +171,7 @@ The Phase 6 acceptance target is Phaser at 60fps and bridge latency below 100ms 
 
 | ID | Severity | Residual risk | Phase 7 mitigation / exit criterion |
 |---|---|---|---|
-| **P7-01** | Medium | Windows cannot execute the race detector because of the local cgo toolchain. | Add GitHub Actions Linux/macOS `go test -race ./...`; retain Windows `go vet`, uncached tests, and static checks as compensating gates. |
+| **P7-01** | Medium | Windows cannot execute the race detector because of the local cgo toolchain. | **Closed (BAN-126).** GitHub Actions `ubuntu-latest` runs `go test -race ./...` plus gofmt/vet and frontend gates (`.github/workflows/ci.yml`, commit `93432a2`; test portability `b20a00c`). Evidence: CI run `38148257893` success, zero data races. macOS job not yet added. |
 | **P7-02** | Medium | 60fps and bridge p95 budgets are not yet measured. | Add Playwright/performance benchmark and a documented hardware/browser baseline; publish p95 evidence. |
 | **P7-03** | Medium | Phaser production chunk is above Vite's 500 kB warning threshold. | Lazy-load OfficeScene and split the Phaser bundle; verify startup and frame budgets. |
 | **P7-04** | Medium | The current frontend integration fixture mocks the bridge rather than launching Wails dev mode. | Add a Wails-aware smoke test or documented desktop integration harness for generated bindings and event delivery. |
