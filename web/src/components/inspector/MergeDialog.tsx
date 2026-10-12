@@ -5,6 +5,7 @@ export type MergeDialogProps = {
   decision: InspectorDecision
   mergeState: 'idle' | 'merging' | 'merged'
   mergeEnabled: boolean
+  mergeError?: string
   taskId: string
   targetBranch?: string
   onMerge: () => unknown
@@ -16,6 +17,7 @@ export function MergeDialog({
   decision,
   mergeState,
   mergeEnabled,
+  mergeError = '',
   taskId,
   targetBranch = 'main',
   onMerge,
@@ -69,6 +71,13 @@ export function MergeDialog({
               <div className="merge-pulse-ring" />
               <strong>Orchestra is integrating changes…</strong>
               <p>Applying inspected worktree patch into {targetBranch}.</p>
+            </div>
+          )}
+
+          {mergeError && (
+            <div className="merge-gate-warning" role="alert">
+              <strong>Merge not completed</strong>
+              <p>{mergeError}</p>
             </div>
           )}
 

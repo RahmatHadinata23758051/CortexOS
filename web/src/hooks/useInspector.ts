@@ -25,12 +25,30 @@ export type InspectorState = {
   audit: InspectorAuditEntry[]
 }
 
+/**
+ * Backend merge seam. The hook never decides that a merge happened on its own:
+ * it only reports `merged` when this command resolves with backend success.
+ */
+export type InspectorMergeCommand = (note: string) => Promise<unknown>
+
+export type UseInspectorOptions = {
+  mergeCommand?: InspectorMergeCommand
+  onMerged?: () => void
+}
+
 const initialState: InspectorState = { decision: 'pending', mergeState: 'idle', audit: [] }
 
-export function useInspector(task: OrchestraTaskDetail | null) {
+/** Pure gate: merge is only allowed after Inspector acceptance and while idle (ADR-0005). */
+export function canRequestMerge(state: Pick<InspectorState, 'decision' | 'mergeState'>, hasCommand: boolean): boolean {
+  return state.decision === 'accepted' && state.mergeState === 'idle' && hasCommand
+}
+
+export function useInspector(task: OrchestraTaskDetail | null, options: UseInspectorOptions = {}) {
   const [state, setState] = useState<InspectorState>(initialState)
   const [note, setNote] = useState('')
+  const [mergeError, setMergeError] = useState('')
   const evidence = useMemo(() => buildEvidence(task), [task])
+  const { mergeCommand, onMerged } = options
 
   const decide = useCallback((decision: Exclude<InspectorDecision, 'pending'>) => {
     const label = decision === 'accepted' ? 'Inspector accepted evidence' : decision === 'rejected' ? 'Inspector rejected evidence' : 'Changes requested from worker'
@@ -42,23 +60,38 @@ export function useInspector(task: OrchestraTaskDetail | null) {
   }, [note])
 
   const merge = useCallback(async () => {
+    // Fail closed: no Inspector acceptance or no backend command means no merge.
     if (state.decision !== 'accepted' || state.mergeState !== 'idle') return false
+    if (!mergeCommand) {
+      setMergeError('Orchestra merge command is unavailable. Merge stays locked.')
+      return false
+    }
+    setMergeError('')
     setState((current) => ({ ...current, mergeState: 'merging' }))
-    await new Promise<void>((resolve) => window.setTimeout(resolve, 620))
+    try {
+      await mergeCommand(note)
+    } catch (error) {
+      // Revert to the locked-but-retryable state; never leave a fake "merged" banner.
+      setState((current) => ({ ...current, mergeState: 'idle' }))
+      setMergeError(error instanceof Error ? error.message : 'Orchestra merge was rejected. Merge stays locked.')
+      return false
+    }
     setState((current) => ({
       ...current,
       mergeState: 'merged',
       audit: [{ id: `${Date.now()}`, decision: 'accepted', note: 'Orchestra merge completed after Inspector acceptance', occurredAt: new Date().toISOString() }, ...current.audit],
     }))
+    onMerged?.()
     return true
-  }, [state.decision, state.mergeState])
+  }, [state.decision, state.mergeState, mergeCommand, note, onMerged])
 
   const reset = useCallback(() => {
     setState(initialState)
     setNote('')
+    setMergeError('')
   }, [])
 
-  return { ...state, evidence, note, setNote, decide, merge, reset, mergeEnabled: state.decision === 'accepted' && state.mergeState === 'idle' }
+  return { ...state, evidence, note, setNote, decide, merge, reset, mergeError, mergeEnabled: canRequestMerge(state, mergeCommand !== undefined) }
 }
 
 function buildEvidence(task: OrchestraTaskDetail | null): InspectorEvidence[] {

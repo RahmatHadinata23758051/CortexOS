@@ -108,6 +108,11 @@ const mockBridge = (tasks: OrchestraTaskSummary[] = sampleTasks): OrchestraBridg
   GetOrchestraTask: vi.fn().mockResolvedValue(sampleDetail),
   CancelOrchestraTask: vi.fn().mockResolvedValue(undefined),
   RetryOrchestraTask: vi.fn().mockResolvedValue(undefined),
+  MergeOrchestraTask: vi.fn().mockResolvedValue({
+    taskId: sampleTasks[0]?.id ?? 'task-1',
+    status: 'success',
+    schemaVersion: orchestraSchemaVersion,
+  }),
 })
 
 const columns: Array<{ status: OrchestraTaskStatus; label: string; description: string }> = [

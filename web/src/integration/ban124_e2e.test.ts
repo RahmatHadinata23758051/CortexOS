@@ -3,7 +3,7 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it, vi } from 'vitest'
 
 import { InspectorReview } from '../components/inspector/InspectorReview'
-import { getOrchestraTask, loadOrchestraTasks } from '../bridge/orchestra'
+import { getOrchestraTask, loadOrchestraTasks, mergeOrchestraTask } from '../bridge/orchestra' 
 import {
   orchestraSchemaVersion,
   type OrchestraBridge,
@@ -51,7 +51,8 @@ function createFakeBackend(taskId: string, projectId: string) {
     timeline: [...timeline],
   })
 
-  // Backend-only transitions: the UI has no bridge method for these.
+  // Backend authority helpers: the UI never drives these transitions itself;
+  // it only reads state and requests a governed merge through the typed command.
   const dispatch = () => {
     record('task.validated', 'draft', 'ready')
     status = 'ready'
@@ -79,6 +80,14 @@ function createFakeBackend(taskId: string, projectId: string) {
     RetryOrchestraTask: vi.fn(async () => {
       if (status !== 'failed') throw new Error('only failed tasks can be retried')
       status = 'ready'
+    }),
+    MergeOrchestraTask: vi.fn(async (request) => {
+      if (request.taskId !== taskId) throw new Error('task not found')
+      if (status !== 'awaitingInspection') {
+        throw new Error('orchestra merge requires Inspector acceptance')
+      }
+      inspectorAcceptAndMerge()
+      return { taskId, status: 'success', schemaVersion: orchestraSchemaVersion }
     }),
   }
 
@@ -127,8 +136,9 @@ describe('BAN-124 Phase 6 end-to-end cockpit chain', () => {
     const selfReported = await getOrchestraTask(backend.bridge, taskId)
     expect(selfReported.status).toBe('awaitingInspection')
 
-    // Inspector accept + Orchestra merge happen on the backend only
-    backend.inspectorAcceptAndMerge()
+    // Inspector acceptance + Orchestra merge happen behind the typed command.
+    const mergeResult = await mergeOrchestraTask(backend.bridge, taskId)
+    expect(mergeResult).toEqual({ taskId, status: 'success', schemaVersion: orchestraSchemaVersion })
     expect(backend.inspectorAccepted).toBe(true)
 
     // UI re-reads and matches backend: success, timeline ordered, merge after accept
@@ -162,6 +172,7 @@ describe('BAN-124 Phase 6 end-to-end cockpit chain', () => {
       GetOrchestraTask: vi.fn(),
       CancelOrchestraTask: vi.fn(),
       RetryOrchestraTask: vi.fn(),
+      MergeOrchestraTask: vi.fn(),
     }
     const state = await loadOrchestraTasks(bridge)
     expect(state.status).toBe('error')

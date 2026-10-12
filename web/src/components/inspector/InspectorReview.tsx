@@ -5,16 +5,24 @@ import { DecisionPanel } from './DecisionPanel'
 import { EvidenceViewer } from './EvidenceViewer'
 import { MergeDialog } from './MergeDialog'
 import { useInspector } from '../../hooks/useInspector'
-import { type OrchestraTaskDetail, type OrchestraTaskSummary } from '../../types/orchestra'
+import { mergeOrchestraTask } from '../../bridge/orchestra'
+import { type OrchestraBridge, type OrchestraTaskDetail, type OrchestraTaskSummary } from '../../types/orchestra'
 
 export type InspectorReviewProps = {
   task: OrchestraTaskSummary
   detail: OrchestraTaskDetail
+  /** Without a bridge the merge command is unavailable and the gate stays locked. */
+  bridge?: OrchestraBridge
   onClose?: () => void
+  /** Called after the backend confirms a merge so the board can re-read state. */
+  onMerged?: () => void
 }
 
-export function InspectorReview({ task, detail, onClose }: InspectorReviewProps) {
-  const inspector = useInspector(detail)
+export function InspectorReview({ task, detail, bridge, onClose, onMerged }: InspectorReviewProps) {
+  const inspector = useInspector(detail, {
+    mergeCommand: bridge ? (note) => mergeOrchestraTask(bridge, task.id, note) : undefined,
+    onMerged,
+  })
   const [selectedEvidence, setSelectedEvidence] = useState(0)
   const [mergeDialogOpen, setMergeDialogOpen] = useState(false)
   const selected = inspector.evidence[selectedEvidence]
@@ -36,6 +44,7 @@ export function InspectorReview({ task, detail, onClose }: InspectorReviewProps)
       decision={inspector.decision}
       mergeState={inspector.mergeState}
       mergeEnabled={inspector.mergeEnabled}
+      mergeError={inspector.mergeError}
       taskId={task.id}
       onMerge={inspector.merge}
       onClose={() => setMergeDialogOpen(false)}
