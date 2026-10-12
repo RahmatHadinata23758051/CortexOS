@@ -35,7 +35,7 @@ runs**. It only activates the auto-quit when the script sets it.
 |---|---|---|
 | Windows | `windows-latest` | Build + full packaged smoke (binary starts, quits itself via env var) |
 | macOS | `macos-latest` | Build only (headless; no GUI display available in CI) |
-| Linux | `ubuntu-latest` | Build only (GTK deps installed; no X server available in CI) |
+| Linux | `ubuntu-22.04` | Build only (GTK/WebKit 4.0 deps installed; no X server available in CI) |
 
 Build only means: `wails build -clean -nopackage` succeeds → the Go
 compiler, Wails bindings, and embedded frontend assets are all correct for
