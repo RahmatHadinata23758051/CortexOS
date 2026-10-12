@@ -1,9 +1,9 @@
-import { useEffect, useState, type FormEvent } from 'react'
+import { lazy, Suspense, useEffect, useState, type FormEvent } from 'react'
 
 import { loadRuntimeSnapshot, type RuntimeState } from './bridge/runtime'
 import { loadWorkspaceSnapshot, type WorkspaceState } from './bridge/workspace'
 import { wailsRuntimeBridge, workspaceSchemaVersion, type WorkspaceProject } from './types'
-import { OfficeView } from './office/OfficeView'
+const OfficeView = lazy(() => import('./office/OfficeView').then(({ OfficeView }) => ({ default: OfficeView })))
 import { TaskBoard } from './taskboard/TaskBoard'
 import { KnowledgeView } from './office/KnowledgeView'
 import { StaffPanel } from './staff/StaffPanel'
@@ -167,7 +167,9 @@ export function App({ initialRoute, initialTheme }: AppProps = {}) {
                 <div><span className="eyebrow">Presentation layer</span><h2>Virtual office</h2></div>
                 <span className="section-index">01 / 01</span>
               </div>
-              <OfficeView />
+              <Suspense fallback={<div className="empty-card" role="status">Loading virtual office…</div>}>
+                <OfficeView />
+              </Suspense>
             </div>
           ) : route === 'knowledge' ? (
             <KnowledgeView />
