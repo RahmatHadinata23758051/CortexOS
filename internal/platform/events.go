@@ -22,6 +22,15 @@ const (
 	EventBrainStateChanged = "cortexos:brain:state:changed"
 )
 
+// Brain-to-Orchestra routing lifecycle event names emitted across the bridge.
+// Payloads carry stable correlation IDs and status codes only.
+const (
+	EventBrainRouteAccepted = "cortexos:brain:route:accepted"
+	EventBrainRouteRejected = "cortexos:brain:route:rejected"
+	EventBrainRouteQueued   = "cortexos:brain:route:queued"
+	EventBrainRouteCanceled = "cortexos:brain:route:canceled"
+)
+
 // RuntimeEventHook is a callback function invoked when a bridge runtime event occurs.
 type RuntimeEventHook func(eventName string, payload any)
 

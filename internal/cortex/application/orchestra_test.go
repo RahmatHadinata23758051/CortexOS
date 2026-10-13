@@ -55,6 +55,21 @@ func (s *orchestraPortStub) MergeTask(_ context.Context, id orchestra.TaskID, _ 
 	}
 	return orchestra.Task{}, orchestra.ErrNotFound
 }
+func (s *orchestraPortStub) CreateTask(_ context.Context, task orchestra.Task) (orchestra.Task, error) {
+	if s.err != nil {
+		return orchestra.Task{}, s.err
+	}
+	for _, existing := range s.tasks {
+		if existing.ID == task.ID {
+			return orchestra.Task{}, orchestra.ErrDuplicateDispatch
+		}
+	}
+	if task.Status == "" {
+		task.Status = orchestra.TaskDraft
+	}
+	s.tasks = append(s.tasks, task)
+	return task, nil
+}
 
 func TestOrchestraBridgeReturnsStablePathFreeDTOs(t *testing.T) {
 	stub := &orchestraPortStub{

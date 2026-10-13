@@ -88,6 +88,25 @@ func (b *Bridge) DispatchBrainTaskStream(request application.BrainDispatchReques
 	return result, err
 }
 
+// RouteBrainTaskToOrchestra submits a bounded routing intent from Brain to Orchestra
+// through the application service boundary and emits corresponding lifecycle events.
+func (b *Bridge) RouteBrainTaskToOrchestra(request application.BrainOrchestraRouteRequest) (application.BrainOrchestraRouteResult, error) {
+	result, err := b.service.RouteBrainTaskToOrchestra(b.getContext(), request)
+	if b.emitter != nil {
+		switch result.Status {
+		case "accepted":
+			b.emitter.Emit(EventBrainRouteAccepted, result)
+		case "rejected":
+			b.emitter.Emit(EventBrainRouteRejected, result)
+		case "queued":
+			b.emitter.Emit(EventBrainRouteQueued, result)
+		case "canceled":
+			b.emitter.Emit(EventBrainRouteCanceled, result)
+		}
+	}
+	return result, err
+}
+
 func (b *Bridge) GetWorkspaceSnapshot(request application.WorkspaceSnapshotRequest) (application.WorkspaceSnapshot, error) {
 	return b.service.GetWorkspaceSnapshot(b.getContext(), request)
 }

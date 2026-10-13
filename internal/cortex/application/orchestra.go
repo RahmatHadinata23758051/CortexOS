@@ -23,6 +23,11 @@ type OrchestraPort interface {
 	CancelTask(context.Context, orchestra.TaskID) error
 	RetryTask(context.Context, orchestra.TaskID) error
 	MergeTask(context.Context, orchestra.TaskID, string) (orchestra.Task, error)
+	// CreateTask creates a new Orchestra-owned task from a Brain routing request.
+	// All authoritative validation (identity, graph references, schema, status)
+	// occurs inside Orchestra. Callers must supply a deterministic task ID derived
+	// from the routing correlation key so retries remain idempotent.
+	CreateTask(context.Context, orchestra.Task) (orchestra.Task, error)
 }
 
 type OrchestraTaskListRequest struct {

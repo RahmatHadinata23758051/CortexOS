@@ -147,6 +147,51 @@ func (a *ProductionAdapter) RetryTask(ctx context.Context, id TaskID) error {
 	})
 }
 
+// CreateTask persists a new draft task through Orchestra's authoritative task store.
+// The adapter rejects existing IDs instead of overwriting an existing task, making
+// correlation-key retries safe and preserving the Orchestra audit boundary.
+func (a *ProductionAdapter) CreateTask(ctx context.Context, task Task) (Task, error) {
+	if a == nil || a.tasks == nil {
+		return Task{}, ErrStoreUnavailable
+	}
+	if ctx == nil {
+		return Task{}, fmt.Errorf("%w: context is required", ErrInvalidTask)
+	}
+	if err := ctx.Err(); err != nil {
+		return Task{}, err
+	}
+	if task.Status == "" {
+		task.Status = TaskDraft
+	}
+	if task.SchemaVersion == "" {
+		task.SchemaVersion = ContractVersion
+	}
+	if task.CreatedAt.IsZero() {
+		task.CreatedAt = time.Now().UTC()
+	}
+	if task.UpdatedAt.IsZero() {
+		task.UpdatedAt = task.CreatedAt
+	}
+	if err := ValidateTask(task); err != nil {
+		return Task{}, err
+	}
+	if _, err := a.tasks.GetTask(ctx, task.ID); err == nil {
+		return Task{}, fmt.Errorf("%w: task %s already exists", ErrDuplicateDispatch, task.ID)
+	} else if !errors.Is(err, ErrNotFound) {
+		return Task{}, err
+	}
+	if err := a.tasks.SaveTask(ctx, task); err != nil {
+		return Task{}, err
+	}
+	if err := a.tasks.AppendEvent(ctx, TaskEvent{
+		TaskID: task.ID, Type: EventTaskCreated, To: TaskDraft,
+		Message: "task created from governed routing request", OccurredAt: time.Now().UTC(),
+	}); err != nil {
+		return Task{}, err
+	}
+	return task, nil
+}
+
 // MergeTask governs authoritative task completion and plan unblocking (ADR-0005).
 // It verifies:
 // 1. Task is currently in TaskAwaitingInspection.

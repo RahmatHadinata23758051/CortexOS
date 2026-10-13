@@ -27,14 +27,15 @@ type RuntimeSnapshot struct {
 
 // Service owns application behavior and does not depend on Wails or frontend packages.
 type Service struct {
-	workspace *workspace.Service
-	orchestra OrchestraPort
-	harness   HarnessPort
-	staff     StaffPort
-	knowledge KnowledgePort
-	cockpit   CockpitPort
-	provider  ProviderPort
-	brain     BrainPort
+	workspace      *workspace.Service
+	orchestra      OrchestraPort
+	harness        HarnessPort
+	staff          StaffPort
+	knowledge      KnowledgePort
+	cockpit        CockpitPort
+	provider       ProviderPort
+	brain          BrainPort
+	brainOrchestra BrainOrchestraPort
 }
 
 // NewService creates the minimal Phase 1 application service.
@@ -86,6 +87,16 @@ func NewServiceWithProvider(providerService ProviderPort) *Service {
 // NewServiceWithBrain adds the optional Brain application boundary.
 func NewServiceWithBrain(brainService BrainPort) *Service {
 	return &Service{brain: brainService}
+}
+
+// NewServiceWithBrainOrchestra adds the governed Brain-to-Orchestra routing port.
+func NewServiceWithBrainOrchestra(brainOrchestraService BrainOrchestraPort) *Service {
+	return &Service{brainOrchestra: brainOrchestraService}
+}
+
+// NewServiceWithBrainAndOrchestra adds Brain, Orchestra, and the governed routing port.
+func NewServiceWithBrainAndOrchestra(brainService BrainPort, orchestraService OrchestraPort, brainOrchestraService BrainOrchestraPort) *Service {
+	return &Service{brain: brainService, orchestra: orchestraService, brainOrchestra: brainOrchestraService}
 }
 
 // NewServiceWithProviderAndBrain adds Provider and Brain boundaries.
@@ -156,4 +167,19 @@ func (s *Service) BrainDispatchStream(ctx context.Context, req BrainDispatchRequ
 		return BrainDispatchResult{}, errors.New("brain not configured")
 	}
 	return s.brain.DispatchStream(ctx, req, handler)
+}
+
+// SetBrainOrchestra attaches the BrainOrchestra application port.
+func (s *Service) SetBrainOrchestra(port BrainOrchestraPort) {
+	if s != nil {
+		s.brainOrchestra = port
+	}
+}
+
+// RouteBrainTaskToOrchestra submits a bounded routing intent from Brain to Orchestra.
+func (s *Service) RouteBrainTaskToOrchestra(ctx context.Context, req BrainOrchestraRouteRequest) (BrainOrchestraRouteResult, error) {
+	if s == nil || s.brainOrchestra == nil {
+		return BrainOrchestraRouteResult{}, errors.New("brain-orchestra routing not configured")
+	}
+	return s.brainOrchestra.RouteBrainToOrchestra(ctx, req)
 }
