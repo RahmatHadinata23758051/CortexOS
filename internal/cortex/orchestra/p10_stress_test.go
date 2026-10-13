@@ -150,6 +150,78 @@ func TestP10Stress_ConcurrentMergesExactlyOneWinner(t *testing.T) {
 		tasks, racers, totalSuccesses.Load(), totalFailures.Load(), elapsed.Round(time.Millisecond))
 }
 
+// TestBAN144_HighConcurrencyMergeRace scales the CAS race probe to the BAN-144
+// acceptance target: 100 independent tasks and 16 racing merge callers per
+// task (1,600 concurrent attempts). Exactly one caller may win for each task.
+func TestBAN144_HighConcurrencyMergeRace(t *testing.T) {
+	adapter, orchStore, harnessStore := setupTestAdapter(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
+	defer cancel()
+
+	const tasks = 100
+	const racers = 16
+	ids := make([]orchestra.TaskID, 0, tasks)
+	for i := 0; i < tasks; i++ {
+		id := orchestra.TaskID(fmt.Sprintf("ban144-task-%03d", i))
+		seedTaskAwaitingInspectionUnique(t, orchStore, harnessStore, id, "wt-1")
+		ids = append(ids, id)
+	}
+
+	var successes atomic.Int64
+	var failures atomic.Int64
+	var wg sync.WaitGroup
+	start := time.Now()
+	for _, id := range ids {
+		for racer := 0; racer < racers; racer++ {
+			wg.Add(1)
+			go func(taskID orchestra.TaskID) {
+				defer wg.Done()
+				if _, err := adapter.MergeTask(ctx, taskID, "BAN-144 concurrent merge race"); err != nil {
+					failures.Add(1)
+					return
+				}
+				successes.Add(1)
+			}(id)
+		}
+	}
+	wg.Wait()
+
+	if err := ctx.Err(); err != nil {
+		t.Fatalf("BAN-144 stress timed out: %v", err)
+	}
+	if got := successes.Load(); got != tasks {
+		t.Fatalf("successful merges = %d, want exactly %d (failures=%d)", got, tasks, failures.Load())
+	}
+	if got := failures.Load(); got != tasks*(racers-1) {
+		t.Fatalf("rejected races = %d, want exactly %d", got, tasks*(racers-1))
+	}
+
+	for _, id := range ids {
+		task, err := orchStore.GetTask(context.Background(), id)
+		if err != nil {
+			t.Fatalf("read task %s: %v", id, err)
+		}
+		if task.Status != orchestra.TaskSuccess {
+			t.Fatalf("task %s status = %s, want success", id, task.Status)
+		}
+		events, err := orchStore.ListEvents(context.Background(), id)
+		if err != nil {
+			t.Fatalf("read events %s: %v", id, err)
+		}
+		accepted := 0
+		for _, event := range events {
+			if event.Type == orchestra.EventInspectionAccepted {
+				accepted++
+			}
+		}
+		if accepted != 1 {
+			t.Fatalf("task %s accepted events = %d, want exactly one", id, accepted)
+		}
+	}
+
+	t.Logf("BAN-144 stress: tasks=%d racers/task=%d attempts=%d successes=%d rejected=%d elapsed=%s", tasks, racers, tasks*racers, successes.Load(), failures.Load(), time.Since(start).Round(time.Millisecond))
+}
+
 // TestP10Stress_SequentialThroughputSoak performs 200 sequential save→merge
 // cycles against real SQLite persistence to catch handle leaks, WAL growth, or
 // sequence drift. It asserts p50-ish pacing stays under a generous bound for
