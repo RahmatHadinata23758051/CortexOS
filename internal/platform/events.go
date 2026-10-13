@@ -31,6 +31,16 @@ const (
 	EventBrainRouteCanceled = "cortexos:brain:route:canceled"
 )
 
+// Tool approval lifecycle event names emitted across the bridge.
+// Payloads carry stable proposal IDs and statuses only; no secrets or raw arguments.
+const (
+	EventToolProposed = "cortexos:tool:proposed"
+	EventToolApproved = "cortexos:tool:approved"
+	EventToolDenied   = "cortexos:tool:denied"
+	EventToolExecuted = "cortexos:tool:executed"
+	EventToolFailed   = "cortexos:tool:failed"
+)
+
 // RuntimeEventHook is a callback function invoked when a bridge runtime event occurs.
 type RuntimeEventHook func(eventName string, payload any)
 

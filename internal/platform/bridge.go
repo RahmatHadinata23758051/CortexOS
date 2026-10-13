@@ -107,6 +107,46 @@ func (b *Bridge) RouteBrainTaskToOrchestra(request application.BrainOrchestraRou
 	return result, err
 }
 
+// ProposeToolCall submits a bounded, redacted tool proposal for operator review
+// and emits EventToolProposed when accepted.
+func (b *Bridge) ProposeToolCall(proposal application.ToolProposal) (application.ToolProposalResult, error) {
+	result, err := b.service.ProposeToolCall(b.getContext(), proposal)
+	if err == nil && b.emitter != nil {
+		b.emitter.Emit(EventToolProposed, result)
+	}
+	return result, err
+}
+
+// DecideToolCall applies an operator approval decision, executes the governed
+// tool through Harness if approved, and emits lifecycle events.
+func (b *Bridge) DecideToolCall(decision application.ToolApprovalDecision) (application.ToolApprovalResult, error) {
+	result, err := b.service.DecideToolCall(b.getContext(), decision)
+	if b.emitter != nil {
+		if err == nil && decision.Decision == "approve" {
+			b.emitter.Emit(EventToolApproved, result)
+		}
+		switch result.Status {
+		case application.ToolApprovalDenied:
+			b.emitter.Emit(EventToolDenied, result)
+		case application.ToolApprovalExecuted:
+			b.emitter.Emit(EventToolExecuted, result)
+		case application.ToolApprovalFailed, application.ToolApprovalCanceled:
+			b.emitter.Emit(EventToolFailed, result)
+		}
+	}
+	return result, err
+}
+
+// GetToolApproval returns a single tool proposal record by ID.
+func (b *Bridge) GetToolApproval(proposalID string) (application.ToolProposalRecord, error) {
+	return b.service.GetToolApproval(b.getContext(), proposalID)
+}
+
+// ListPendingToolApprovals returns all pending proposals requiring operator decision.
+func (b *Bridge) ListPendingToolApprovals() ([]application.ToolProposalRecord, error) {
+	return b.service.ListPendingToolApprovals(b.getContext())
+}
+
 func (b *Bridge) GetWorkspaceSnapshot(request application.WorkspaceSnapshotRequest) (application.WorkspaceSnapshot, error) {
 	return b.service.GetWorkspaceSnapshot(b.getContext(), request)
 }

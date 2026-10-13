@@ -36,6 +36,7 @@ type Service struct {
 	provider       ProviderPort
 	brain          BrainPort
 	brainOrchestra BrainOrchestraPort
+	toolApproval   ToolApprovalPort
 }
 
 // NewService creates the minimal Phase 1 application service.
@@ -174,6 +175,45 @@ func (s *Service) SetBrainOrchestra(port BrainOrchestraPort) {
 	if s != nil {
 		s.brainOrchestra = port
 	}
+}
+
+// SetToolApproval attaches the governed tool approval application port.
+func (s *Service) SetToolApproval(port ToolApprovalPort) {
+	if s != nil {
+		s.toolApproval = port
+	}
+}
+
+// ProposeToolCall submits a bounded, redacted tool proposal for operator approval.
+func (s *Service) ProposeToolCall(ctx context.Context, proposal ToolProposal) (ToolProposalResult, error) {
+	if s == nil || s.toolApproval == nil {
+		return ToolProposalResult{}, errors.New("tool approval not configured")
+	}
+	return s.toolApproval.SubmitProposal(ctx, proposal)
+}
+
+// DecideToolCall applies an idempotent operator decision to a pending tool proposal.
+func (s *Service) DecideToolCall(ctx context.Context, decision ToolApprovalDecision) (ToolApprovalResult, error) {
+	if s == nil || s.toolApproval == nil {
+		return ToolApprovalResult{}, errors.New("tool approval not configured")
+	}
+	return s.toolApproval.DecideProposal(ctx, decision)
+}
+
+// GetToolApproval returns one sanitized proposal record by ID.
+func (s *Service) GetToolApproval(ctx context.Context, proposalID string) (ToolProposalRecord, error) {
+	if s == nil || s.toolApproval == nil {
+		return ToolProposalRecord{}, errors.New("tool approval not configured")
+	}
+	return s.toolApproval.GetProposal(ctx, proposalID)
+}
+
+// ListPendingToolApprovals returns pending proposals in stable order.
+func (s *Service) ListPendingToolApprovals(ctx context.Context) ([]ToolProposalRecord, error) {
+	if s == nil || s.toolApproval == nil {
+		return nil, errors.New("tool approval not configured")
+	}
+	return s.toolApproval.ListPendingProposals(ctx)
 }
 
 // RouteBrainTaskToOrchestra submits a bounded routing intent from Brain to Orchestra.

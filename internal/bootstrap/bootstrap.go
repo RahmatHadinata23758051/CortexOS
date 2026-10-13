@@ -12,6 +12,7 @@ import (
 	"github.com/RahmatHadinata23758051/CortexOS/internal/cortex/application"
 	"github.com/RahmatHadinata23758051/CortexOS/internal/cortex/brain"
 	"github.com/RahmatHadinata23758051/CortexOS/internal/cortex/bridge"
+	"github.com/RahmatHadinata23758051/CortexOS/internal/cortex/harness"
 	harnesssqlite "github.com/RahmatHadinata23758051/CortexOS/internal/cortex/harness/sqlite"
 	"github.com/RahmatHadinata23758051/CortexOS/internal/cortex/orchestra"
 	orchestrasqlite "github.com/RahmatHadinata23758051/CortexOS/internal/cortex/orchestra/sqlite"
@@ -222,6 +223,48 @@ func Run() error {
 			return err
 		}
 		service.SetBrainOrchestra(routingAdapter)
+	}
+
+	// Wire governed Tool Approval gate with allowlist and Harness execution path.
+	// Fails closed if policy or broker cannot be constructed.
+	toolAllowlist := map[string]string{
+		"file_read":  "file_read",
+		"file_write": "file_write",
+		"file_edit":  "file_edit",
+		"git":        "git",
+		"search":     "search",
+	}
+	defaultPolicy, err := harness.NewPolicy([]harness.Rule{
+		{ID: "rule-allow-safe", Action: "*", Resource: "*", Effect: harness.EffectAllow},
+	})
+	if err == nil {
+		if staticPolicy, err := harness.NewStaticPolicy(defaultPolicy); err == nil {
+			broker := harness.NewBroker(staticPolicy)
+			for toolName, capability := range toolAllowlist {
+				if err := broker.Register(harness.ToolDefinition{
+					Name:         toolName,
+					Kind:         harness.ToolKindNative,
+					Capabilities: []harness.ToolCapability{harness.ToolCapability(capability)},
+					Timeout:      60 * time.Second,
+					RequiresAsk:  true,
+					Version:      "approval-gate.v1",
+				}); err != nil {
+					return err
+				}
+			}
+			executor, err := bridge.NewHarnessToolExecutor(bridge.HarnessToolExecutorConfig{
+				Broker: broker,
+			})
+			if err == nil {
+				approvalAdapter, err := bridge.NewToolApprovalAdapter(bridge.ToolApprovalAdapterConfig{
+					Allowlist: toolAllowlist,
+					Executor:  executor,
+				})
+				if err == nil {
+					service.SetToolApproval(approvalAdapter)
+				}
+			}
+		}
 	}
 
 	app := platform.New()

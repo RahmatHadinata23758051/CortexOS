@@ -1,4 +1,4 @@
-# Phase 13 Sprint 13.1 Evidence: Brain ↔ Orchestra Routing
+# Phase 13 Evidence: Brain ↔ Orchestra Routing and Tool Approval Gates
 
 **Parent Epic:** BAN-155  
 **Sprint:** BAN-156  
@@ -47,12 +47,40 @@ go vet ./internal/cortex/application ./internal/cortex/bridge ./internal/cortex/
 - **BAN-158**: 13.1.2 Implement Brain-to-Orchestra routing adapter (`Done`)
 - **BAN-159**: 13.1.3 Wire routing service, Wails bridge, and lifecycle events (`Done`)
 - **BAN-160**: 13.1.4 Add routing integration evidence and regression gates (`Done`)
-- **BAN-161**: Sprint 13.2 Tool Approval Gates queued (`Todo`)
+- **BAN-161**: Sprint 13.2 Tool Approval Gates and Governed Tool Calls completed (`Done`)
+- **BAN-165**: 13.2.1 Define versioned tool proposal and approval contracts (`Done`)
+- **BAN-166**: 13.2.2 Implement approval store and governed execution adapter (`Done`)
+- **BAN-167**: 13.2.3 Wire approval service, Wails bridge, and lifecycle events (`Done`)
+- **BAN-168**: 13.2.4 Add approval integration evidence and regression gates (`Done`)
 - **BAN-162**: Sprint 13.3 Multi-Staff Coordination queued (`Todo`)
 - **BAN-163**: Sprint 13.4 Knowledge Retrieval Grounding queued (`Todo`)
 - **BAN-164**: Sprint 13.5 End-to-End Hardening queued (`Todo`)
 
+## Sprint 13.2: Tool Approval Gates Implemented Slices
+
+| Slice | Files | Status |
+|---|---|---|
+| Proposal & decision versioned contracts | `internal/cortex/application/tool_approval.go` | Implemented |
+| Contract validation & secret rejection tests | `internal/cortex/application/tool_approval_test.go` | Implemented |
+| In-process approval gate adapter | `internal/cortex/bridge/tool_approval_adapter.go` | Implemented |
+| Approval gate fail-closed tests | `internal/cortex/bridge/tool_approval_adapter_test.go` | Implemented |
+| Harness governed tool executor | `internal/cortex/bridge/harness_tool_executor.go` | Implemented |
+| Harness tool executor tests | `internal/cortex/bridge/harness_tool_executor_test.go` | Implemented |
+| Service & Wails approval methods | `internal/cortex/application/service.go`, `internal/platform/bridge.go` | Implemented |
+| Lifecycle event constants & tests | `internal/platform/events.go`, `internal/platform/tool_approval_test.go` | Implemented |
+| Bootstrap wiring with allowlist | `internal/bootstrap/bootstrap.go` | Implemented |
+
+## Sprint 13.2 Verification
+
+```text
+go test ./internal/cortex/application ./internal/cortex/bridge -count=1  PASS
+go test ./internal/platform -count=1                                  PASS
+go test ./internal/bootstrap -count=1                                 PASS
+go test ./internal/platform -run TestNoUnreviewedRemoteTransport -count=1 PASS
+go vet ./internal/cortex/application ./internal/cortex/bridge ./internal/cortex/harness ./internal/platform ./internal/bootstrap PASS
+```
+
 ## Rollback
 
-Sprint rollback target: `937e25d` (Phase 12 release); Phase 11 fallback: `bf43689`.
+Sprint 13.2 rollback target: `4abe8bc` (Phase 13 Sprint 13.1); Phase 12 fallback: `937e25d`.
 
