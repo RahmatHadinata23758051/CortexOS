@@ -3,6 +3,7 @@ name: CI
 on:
   push:
     branches: [main]
+    tags: ['v*']
   pull_request:
     branches: [main]
   workflow_dispatch: {}
@@ -103,11 +104,43 @@ jobs:
           npm ci
           npm run build
 
+      - name: Inject app version into wails.json
+        shell: python
+        run: |
+          import json, sys
+          with open('VERSION') as f:
+              v = f.read().strip()
+          pv = v[1:] if v.startswith('v') else v
+          with open('wails.json') as f:
+              w = json.load(f)
+          w.setdefault('info', {})['productVersion'] = pv
+          with open('wails.json', 'w') as f:
+              json.dump(w, f, indent=2)
+              f.write('\n')
+          print(f"wails.json productVersion -> {pv}")
+
       - name: Install Wails CLI
         run: go install github.com/wailsapp/wails/v2/cmd/wails@v2.16.0
 
       - name: Build packaged binary
         run: wails build -clean -nopackage -s -platform ${{ matrix.platform }}
+
+      - name: Generate build checksums
+        shell: bash
+        env:
+          ARTIFACT_NAME: cortexos-${{ matrix.os }}
+          ARTIFACT_PLATFORM: ${{ matrix.platform }}
+        run: |
+          chmod +x ./scripts/generate-checksums.sh
+          ./scripts/generate-checksums.sh
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: cortexos-${{ matrix.os }}
+          path: |
+            build/bin/cortexos*
+          retention-days: 7
 
       - name: Packaged smoke (Windows)
         if: runner.os == 'Windows'
