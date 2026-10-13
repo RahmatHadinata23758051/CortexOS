@@ -8,6 +8,7 @@ import { TaskBoard } from './taskboard/TaskBoard'
 import { KnowledgeView } from './office/KnowledgeView'
 import { StaffPanel } from './staff/StaffPanel'
 import { TerminalPanel } from './components/terminal/TerminalPanel'
+import { BrainPanel } from './components/brain/BrainPanel'
 
 export type ProjectFormState = {
   id: string
@@ -17,7 +18,7 @@ export type ProjectFormState = {
   defaultBranch: string
 }
 
-export type ShellRoute = 'workspace' | 'operations' | 'terminal' | 'activity' | 'office' | 'knowledge' | 'staff' | 'settings'
+export type ShellRoute = 'workspace' | 'operations' | 'terminal' | 'activity' | 'office' | 'knowledge' | 'staff' | 'brain' | 'settings'
 export type Theme = 'light' | 'dark'
 
 export interface AppProps {
@@ -43,6 +44,7 @@ const navigation: Array<{ route: ShellRoute; label: string; icon: string; detail
   { route: 'office', label: 'Office', icon: '□', detail: 'Virtual office' },
   { route: 'knowledge', label: 'Knowledge', icon: '⌘', detail: 'Vault browser' },
   { route: 'staff', label: 'Staff', icon: '◎', detail: 'Staff management' },
+  { route: 'brain', label: 'Brain', icon: '🧠', detail: 'Reasoning cockpit' },
 ]
 
 export function App({ initialRoute, initialTheme }: AppProps = {}) {
@@ -175,6 +177,8 @@ export function App({ initialRoute, initialTheme }: AppProps = {}) {
             <KnowledgeView />
           ) : route === 'staff' ? (
             <StaffPanel />
+          ) : route === 'brain' ? (
+            <BrainPanel />
           ) : (
             <RoutePlaceholder route={route} />
           )}
@@ -271,7 +275,7 @@ export function ProjectCard({ project }: { project: WorkspaceProject }) {
 function getRouteFromLocation(): ShellRoute {
   if (typeof window === 'undefined') return 'workspace'
   const route = window.location.hash.slice(1) as ShellRoute
-  return ['workspace', 'operations', 'terminal', 'activity', 'office', 'knowledge', 'staff', 'settings'].includes(route) ? route : 'workspace'
+  return ['workspace', 'operations', 'terminal', 'activity', 'office', 'knowledge', 'staff', 'brain', 'settings'].includes(route) ? route : 'workspace'
 }
 
 function getThemePreference(): Theme {
