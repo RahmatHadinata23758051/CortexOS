@@ -395,6 +395,7 @@ func (a *OMPAdapter) validateEnvelope(ctx ExecutionContext, envelope ExecutionEn
 func (a *OMPAdapter) supports(toolName string) bool {
 	norm := strings.ToLower(strings.TrimSpace(toolName))
 	norm = strings.TrimPrefix(norm, "omp_")
+	norm = strings.TrimSuffix(norm, "_agent")
 	norm = strings.ReplaceAll(norm, "-", "_")
 	for _, capability := range a.capabilities {
 		if string(capability) == norm {

@@ -397,6 +397,7 @@ func (a *PiAdapter) validateEnvelope(ctx ExecutionContext, envelope ExecutionEnv
 func (a *PiAdapter) supports(toolName string) bool {
 	norm := strings.ToLower(strings.TrimSpace(toolName))
 	norm = strings.TrimPrefix(norm, "pi_")
+	norm = strings.TrimSuffix(norm, "_agent")
 	norm = strings.ReplaceAll(norm, "-", "_")
 	switch norm {
 	case "coding", "analysis", "refactor", "debug", "review", "test_gen", "doc_gen", "pi", "pi_task", "default":
