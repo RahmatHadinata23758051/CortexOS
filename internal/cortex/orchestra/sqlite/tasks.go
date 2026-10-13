@@ -421,10 +421,10 @@ func (s *Store) CommitMerge(ctx context.Context, commit orchestra.MergeCommit) e
 	// Update merged task to TaskSuccess
 	criteriaJSON, _ := json.Marshal(commit.MergedTask.AcceptanceCriteria)
 	depsJSON, _ := json.Marshal(commit.MergedTask.Dependencies)
-	_, err = tx.ExecContext(ctx, `UPDATE orchestra_tasks SET
+	result, err := tx.ExecContext(ctx, `UPDATE orchestra_tasks SET
 		status = ?, attempt_count = ?, max_attempts = ?, updated_at = ?,
 		title = ?, acceptance_criteria = ?, dependencies = ?, schema_version = ?
-		WHERE id = ?`,
+		WHERE id = ? AND status = ?`,
 		string(commit.MergedTask.Status),
 		commit.MergedTask.AttemptCount,
 		commit.MergedTask.MaxAttempts,
@@ -434,9 +434,15 @@ func (s *Store) CommitMerge(ctx context.Context, commit orchestra.MergeCommit) e
 		string(depsJSON),
 		commit.MergedTask.SchemaVersion,
 		string(commit.MergedTask.ID),
+		string(orchestra.TaskAwaitingInspection),
 	)
 	if err != nil {
 		return fmt.Errorf("update merged task: %w", err)
+	}
+	if rows, rowsErr := result.RowsAffected(); rowsErr != nil {
+		return fmt.Errorf("inspect merged task compare-and-set result: %w", rowsErr)
+	} else if rows != 1 {
+		return fmt.Errorf("%w: merged task %s changed concurrently", orchestra.ErrMergeConflict, commit.MergedTask.ID)
 	}
 
 	// Insert accepted event with generated sequence
@@ -482,10 +488,10 @@ func (s *Store) CommitMerge(ctx context.Context, commit orchestra.MergeCommit) e
 
 		criteriaJSON, _ = json.Marshal(task.AcceptanceCriteria)
 		depsJSON, _ = json.Marshal(task.Dependencies)
-		_, err = tx.ExecContext(ctx, `UPDATE orchestra_tasks SET
+		result, err := tx.ExecContext(ctx, `UPDATE orchestra_tasks SET
 			status = ?, attempt_count = ?, max_attempts = ?, updated_at = ?,
 			title = ?, acceptance_criteria = ?, dependencies = ?, schema_version = ?
-			WHERE id = ?`,
+			WHERE id = ? AND status = ?`,
 			string(task.Status),
 			task.AttemptCount,
 			task.MaxAttempts,
@@ -495,9 +501,15 @@ func (s *Store) CommitMerge(ctx context.Context, commit orchestra.MergeCommit) e
 			string(depsJSON),
 			task.SchemaVersion,
 			string(task.ID),
+			string(orchestra.TaskDraft),
 		)
 		if err != nil {
 			return fmt.Errorf("update dependent task %s: %w", task.ID, err)
+		}
+		if rows, rowsErr := result.RowsAffected(); rowsErr != nil {
+			return fmt.Errorf("inspect dependent task %s compare-and-set result: %w", task.ID, rowsErr)
+		} else if rows != 1 {
+			return fmt.Errorf("%w: dependent task %s changed concurrently", orchestra.ErrMergeConflict, task.ID)
 		}
 
 		validatedEvent := commit.ValidatedEvents[i]
