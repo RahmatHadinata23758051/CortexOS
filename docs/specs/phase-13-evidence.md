@@ -1,9 +1,9 @@
-# Phase 13 Evidence: Brain ↔ Orchestra Routing and Tool Approval Gates
+# Phase 13 Evidence: Brain ↔ Orchestra Routing, Tool Approval, and Staff Coordination
 
 **Parent Epic:** BAN-155  
-**Sprint:** BAN-156  
-**Date:** 2026-10-13  
-**Status:** Completed and verified  
+**Sprint:** 13.3 Multi-Staff Coordination
+**Date:** 2026-10-13
+**Status:** Sprint 13.3 completed and verified; full-suite version baseline remains pre-existing
 
 ## Implemented slices
 
@@ -52,9 +52,60 @@ go vet ./internal/cortex/application ./internal/cortex/bridge ./internal/cortex/
 - **BAN-166**: 13.2.2 Implement approval store and governed execution adapter (`Done`)
 - **BAN-167**: 13.2.3 Wire approval service, Wails bridge, and lifecycle events (`Done`)
 - **BAN-168**: 13.2.4 Add approval integration evidence and regression gates (`Done`)
-- **BAN-162**: Sprint 13.3 Multi-Staff Coordination queued (`Todo`)
+- **BAN-162**: Sprint 13.3 Multi-Staff Coordination (`Done`)
+- **BAN-169**: 13.3.1 Define bounded coordination snapshot and event contracts (`Done`)
+- **BAN-170**: 13.3.2 Implement coordination projection and application service (`Done`)
+- **BAN-171**: 13.3.3 Wire coordination Wails bridge, events, and Office/Cockpit mapping (`Done`)
+- **BAN-172**: 13.3.4 Add multi-Staff integration, performance, and security evidence (`Done`)
 - **BAN-163**: Sprint 13.4 Knowledge Retrieval Grounding queued (`Todo`)
 - **BAN-164**: Sprint 13.5 End-to-End Hardening queued (`Todo`)
+
+## Sprint 13.3: Multi-Staff Coordination Implemented Slices
+
+| Slice | Files | Status |
+|---|---|---|
+| Bounded coordination snapshot & event contracts | `internal/cortex/application/coordination.go` | Implemented |
+| Contract validation, sanitization & phase tests | `internal/cortex/application/coordination_test.go` | Implemented |
+| Thread-safe coordination projection | `internal/cortex/application/coordination_projection.go` | Implemented |
+| Projection refresh/snapshot & fail-closed tests | `internal/cortex/application/coordination_projection_test.go` | Implemented |
+| Application service coordination port | `internal/cortex/application/service.go` | Implemented |
+| Orchestra/Staff coordination source adapter | `internal/cortex/bridge/coordination_source.go` | Implemented |
+| Source adapter tests | `internal/cortex/bridge/coordination_source_test.go` | Implemented |
+| Wails bridge methods & lifecycle events | `internal/platform/bridge.go`, `internal/platform/events.go` | Implemented |
+| Platform event mapping & leak tests | `internal/platform/coordination_test.go` | Implemented |
+| Bootstrap coordination wiring | `internal/bootstrap/bootstrap.go` | Implemented |
+| Frontend coordination contract | `web/src/types/coordination.ts` | Implemented |
+| Frontend coordination bridge/subscription | `web/src/bridge/coordination.ts`, `web/src/bridge/coordination.test.ts` | Implemented |
+| Office coordination panel | `web/src/office/CoordinationPanel.tsx`, `web/src/office/CoordinationPanel.test.tsx` | Implemented |
+| Office scene avatar coordination mapping | `web/src/office/OfficeView.tsx`, `web/src/office/OfficeScene.ts` | Implemented |
+| Go ↔ TypeScript binding contract test | `web/src/integration/ban162_coordination_bindings.test.ts` | Implemented |
+
+## Sprint 13.3 Contract and authority guarantees
+
+- Coordination is a read-only projection over authoritative Orchestra tasks and safe Staff summaries; the projection owns no domain mutations.
+- Snapshot and event payloads are bounded (`MaxCoordinationTasks` 100, `MaxCoordinationStaff` 50, label/summary length caps) and rejected when exceeded.
+- Absolute paths, credential-like tokens, and unsupported schema versions fail closed during validation and are never emitted.
+- Dependency phases are computed deterministically with cycle protection; blocked state derives only from Orchestra-owned task statuses.
+- Lifecycle events (`cortexos:coordination:changed|assigned|reassigned|progress|blocked|completed|canceled`) carry opaque IDs and sanitized status only.
+- The Office scene updates avatars on governed lifecycle events (assignment state + current task signature), not on per-token output frequency.
+- Unknown event types and unwired coordination ports fail closed without emission.
+
+## Sprint 13.3 Verification
+
+```text
+go test ./internal/cortex/application ./internal/cortex/bridge -count=1  PASS
+go test ./internal/platform ./internal/bootstrap -count=1               PASS
+go vet ./internal/...                                                   PASS
+npm --prefix web test                                                   PASS (32 files / 201 tests)
+npm --prefix web run build                                              PASS
+npm --prefix web run lint                                               PASS
+npm --prefix web run typecheck                                          PASS
+npx playwright test benchmarks/ban162-coordination.spec.ts              PASS
+```
+
+Note: `go test ./...` still reports the pre-existing `internal/version`
+baseline mismatch (`VERSION` = `v0.10.0-phase10` vs `version.Version` =
+`0.9.0-phase9`), which is unrelated to Sprint 13.3 and unchanged by this work.
 
 ## Sprint 13.2: Tool Approval Gates Implemented Slices
 
@@ -82,6 +133,6 @@ go vet ./internal/cortex/application ./internal/cortex/bridge ./internal/cortex/
 
 ## Rollback
 
-Sprint 13.2 rollback target: `4abe8bc` (Phase 13 Sprint 13.1); Phase 12 fallback: `937e25d`.
+Sprint 13.3 rollback target: `0e57687` (Phase 13 Sprint 13.2); Sprint 13.1 fallback: `4abe8bc`; Phase 12 fallback: `937e25d`.
 Sprint 13.2 commit: `0e57687` (feat: add governed tool approval gates).
 

@@ -19,6 +19,7 @@ export * from './workspace'
 export * from './office'
 export * from './cockpit'
 export * from './orchestra'
+export * from './coordination'
 export * from './knowledge'
 export * from './harness'
 export * from './brain'
@@ -28,9 +29,10 @@ import type { HarnessBridge } from './harness'
 import type { OfficeBridge } from './office'
 import type { CockpitBridge } from './cockpit'
 import type { OrchestraBridge } from './orchestra'
+import type { CoordinationBridge } from './coordination'
 import type { BrainBridge } from './brain'
 
-export type FullBridge = RuntimeBridge & WorkspaceBridge & OfficeBridge & CockpitBridge & OrchestraBridge & KnowledgeBridge & HarnessBridge & BrainBridge
+export type FullBridge = RuntimeBridge & WorkspaceBridge & OfficeBridge & CockpitBridge & OrchestraBridge & CoordinationBridge & KnowledgeBridge & HarnessBridge & BrainBridge
 
 export type WailsWindow = Window & {
   go?: {
@@ -61,6 +63,7 @@ export const wailsRuntimeBridge: FullBridge = {
   QueryCockpitWorkspace: (request) => getWailsBridge().QueryCockpitWorkspace(request),
   RebuildCockpitRetrieval: (request) => getWailsBridge().RebuildCockpitRetrieval(request),
   ListOrchestraTasks: (request) => getWailsBridge().ListOrchestraTasks(request),
+  GetCoordinationSnapshot: (request) => getWailsBridge().GetCoordinationSnapshot(request),
   GetOrchestraTask: (request) => getWailsBridge().GetOrchestraTask(request),
   CancelOrchestraTask: (request) => getWailsBridge().CancelOrchestraTask(request),
   RetryOrchestraTask: (request) => getWailsBridge().RetryOrchestraTask(request),

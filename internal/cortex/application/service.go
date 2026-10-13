@@ -37,6 +37,7 @@ type Service struct {
 	brain          BrainPort
 	brainOrchestra BrainOrchestraPort
 	toolApproval   ToolApprovalPort
+	coordination   CoordinationPort
 }
 
 // NewService creates the minimal Phase 1 application service.
@@ -182,6 +183,21 @@ func (s *Service) SetToolApproval(port ToolApprovalPort) {
 	if s != nil {
 		s.toolApproval = port
 	}
+}
+
+// SetCoordination attaches the bounded multi-Staff coordination projection.
+func (s *Service) SetCoordination(port CoordinationPort) {
+	if s != nil {
+		s.coordination = port
+	}
+}
+
+// GetCoordinationSnapshot returns the latest bounded multi-Staff coordination view.
+func (s *Service) GetCoordinationSnapshot(ctx context.Context, request CoordinationSnapshotRequest) (CoordinationSnapshot, error) {
+	if s == nil || s.coordination == nil {
+		return CoordinationSnapshot{}, errors.New("coordination not configured")
+	}
+	return s.coordination.GetCoordinationSnapshot(ctx, request)
 }
 
 // ProposeToolCall submits a bounded, redacted tool proposal for operator approval.

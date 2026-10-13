@@ -1,11 +1,14 @@
 import { useEffect, useRef, useState, useCallback, type ReactNode } from 'react'
 import { useBrainDispatch } from '../hooks/useBrainDispatch'
 import { type StaffSummary, type StaffBrainState, type OfficeActivityEvent, type TerminalOverlayState } from '../types/office'
+import { type CoordinationSnapshot, type StaffAssignmentStatus } from '../types/coordination'
 import { loadOfficeSnapshot, createOfficeEventSource, staffById, type OfficeState } from '../bridge/office'
+import { loadCoordinationSnapshot, onCoordinationChanged } from '../bridge/coordination'
+import { CoordinationPanel } from './CoordinationPanel'
 import { wailsRuntimeBridge } from '../types'
 
 interface OfficeSceneHandle {
-  setOfficeState(state: { staff: readonly StaffSummary[]; activity: readonly OfficeActivityEvent[]; brainState?: StaffBrainState; onStaffSelect?: (id: string) => void }): void
+  setOfficeState(state: { staff: readonly StaffSummary[]; activity: readonly OfficeActivityEvent[]; brainState?: StaffBrainState; coordination?: readonly StaffAssignmentStatus[]; onStaffSelect?: (id: string) => void }): void
 }
 
 interface OfficeGameHandle {
@@ -120,7 +123,7 @@ function ReadOnlyBanner() {
   )
 }
 
-function OfficeCanvas({ staff, onSelect, brainState }: { staff: readonly StaffSummary[]; onSelect: (id: string) => void; brainState?: StaffBrainState }) {
+function OfficeCanvas({ staff, onSelect, brainState, coordination }: { staff: readonly StaffSummary[]; onSelect: (id: string) => void; brainState?: StaffBrainState; coordination?: readonly StaffAssignmentStatus[] }) {
   const canvasRef = useRef<HTMLDivElement>(null)
   const gameRef = useRef<OfficeGameHandle | null>(null)
   const sceneRef = useRef<OfficeSceneHandle | null>(null)
@@ -128,13 +131,18 @@ function OfficeCanvas({ staff, onSelect, brainState }: { staff: readonly StaffSu
   // the lifecycle phase or staffId changes (via phaseKey). Per-token output changes
   // are throttled by not including `brainState.speechText` in the key.
   const phaseKey = brainState ? `${brainState.staffId ?? 'none'}:${brainState.state}` : 'idle'
+  // Coordination signature is derived from bounded assignment state (idle/running/
+  // blocked/awaiting_inspection/completed/failed) and current task, so avatars update
+  // on governed lifecycle events rather than per-token frequency.
+  const coordinationKey = coordination ? coordination.map((item) => `${item.staffId}:${item.state}:${item.currentTaskId ?? ''}`).join('|') : ''
+  const sceneKey = `${phaseKey}#${coordinationKey}`
 
   // Phaser game instance is created once; updates go through setOfficeState.
   useEffect(() => {
     let mounted = true
     void import('../office/OfficeScene').then(({ createOfficeGame }) => {
       if (!mounted || !canvasRef.current) return
-      const game = createOfficeGame(canvasRef.current, { staff, activity: [], brainState, onStaffSelect: onSelect }) as unknown as OfficeGameHandle
+      const game = createOfficeGame(canvasRef.current, { staff, activity: [], brainState, coordination, onStaffSelect: onSelect }) as unknown as OfficeGameHandle
       gameRef.current = game
       sceneRef.current = game.scene.getScene('office')
     })
@@ -149,13 +157,13 @@ function OfficeCanvas({ staff, onSelect, brainState }: { staff: readonly StaffSu
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // Only trigger setOfficeState when phaseKey (staffId + lifecycle) changes.
+  // Only trigger setOfficeState when sceneKey (staffId + lifecycle + coordination) changes.
   useEffect(() => {
     if (sceneRef.current) {
-      sceneRef.current.setOfficeState({ staff, activity: [], brainState, onStaffSelect: onSelect })
+      sceneRef.current.setOfficeState({ staff, activity: [], brainState, coordination, onStaffSelect: onSelect })
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [phaseKey])
+  }, [sceneKey])
 
   return <div ref={canvasRef} className="office-canvas" role="img" aria-label="Virtual office canvas" />
 }
@@ -165,6 +173,7 @@ export function OfficeView({ className = '' }: OfficeViewProps): ReactNode {
   const [selectedStaffId, setSelectedStaffId] = useState<string | undefined>()
   const [activityEvents, setActivityEvents] = useState<readonly OfficeActivityEvent[]>([])
   const [terminalState, setTerminalState] = useState<TerminalOverlayState>({ visible: false, lines: [] })
+  const [coordination, setCoordination] = useState<{ status: 'loading' } | { status: 'success'; snapshot: CoordinationSnapshot } | { status: 'error'; message: string }>({ status: 'loading' })
   const eventSource = useRef(createOfficeEventSource())
 
   // Brain hook drives the local reasoning session and per-staff activity.
@@ -199,6 +208,22 @@ export function OfficeView({ className = '' }: OfficeViewProps): ReactNode {
     return () => { active = false; unsubscribe() }
   }, [])
 
+  // Coordination snapshot is loaded once and refreshed on lifecycle events rather
+  // than per-token, keeping Office updates event-driven and bounded.
+  useEffect(() => {
+    let active = true
+    const refresh = () => {
+      loadCoordinationSnapshot(wailsRuntimeBridge).then((state) => {
+        if (!active) return
+        if (state.status === 'success') setCoordination({ status: 'success', snapshot: state.snapshot })
+        else if (state.status === 'error') setCoordination({ status: 'error', message: state.message })
+      })
+    }
+    refresh()
+    const unsubscribe = onCoordinationChanged(refresh)
+    return () => { active = false; unsubscribe() }
+  }, [])
+
   if (officeState.status === 'loading') return <div className={`office-view ${className}`}><div className="office-loading">Loading virtual office…</div></div>
   if (officeState.status === 'error') return <div className={`office-view ${className}`}><div className="office-error">{officeState.code}: {officeState.message}</div></div>
 
@@ -213,9 +238,11 @@ export function OfficeView({ className = '' }: OfficeViewProps): ReactNode {
             staff={staff}
             onSelect={handleStaffSelect}
             brainState={brainStateForPhaser}
+            coordination={coordination.status === 'success' ? coordination.snapshot.assignments : undefined}
           />
         </main>
         <div className="office-side">
+          {coordination.status === 'success' && <CoordinationPanel snapshot={coordination.snapshot} />}
           <StaffDirectory staff={staff} selectedId={selectedStaffId} onSelect={handleStaffSelect} />
           <ZoneLegend />
           <ActivityFeed events={activityEvents} />

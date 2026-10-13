@@ -267,6 +267,17 @@ func Run() error {
 		}
 	}
 
+	// Wire bounded multi-Staff coordination projection when Orchestra is available.
+	if orchestraPort != nil {
+		source, err := bridge.NewCoordinationSourceAdapter(bridge.CoordinationSourceConfig{
+			Orchestra: orchestraPort,
+		})
+		if err == nil {
+			projection := application.NewCoordinationProjection(source)
+			service.SetCoordination(projection)
+		}
+	}
+
 	app := platform.New()
 	bridge := platform.NewBridge(service)
 	app.OnStartup(bridge.SetRuntimeContext)

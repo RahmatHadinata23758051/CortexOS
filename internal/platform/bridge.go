@@ -147,6 +147,53 @@ func (b *Bridge) ListPendingToolApprovals() ([]application.ToolProposalRecord, e
 	return b.service.ListPendingToolApprovals(b.getContext())
 }
 
+// GetCoordinationSnapshot refreshes and returns the bounded multi-Staff
+// coordination view, emitting EventCoordinationChanged when a snapshot is produced.
+func (b *Bridge) GetCoordinationSnapshot(request application.CoordinationSnapshotRequest) (application.CoordinationSnapshot, error) {
+	snapshot, err := b.service.GetCoordinationSnapshot(b.getContext(), request)
+	if err == nil && b.emitter != nil {
+		b.emitter.Emit(EventCoordinationChanged, snapshot)
+	}
+	return snapshot, err
+}
+
+// EmitCoordinationEvent publishes a bounded coordination lifecycle event to the
+// Wails runtime. Unknown event types fail closed without emission.
+func (b *Bridge) EmitCoordinationEvent(payload application.CoordinationEventPayload) error {
+	if err := payload.Validate(); err != nil {
+		return err
+	}
+	if b.emitter == nil {
+		return nil
+	}
+	eventName := coordinationEventName(payload.EventType)
+	if eventName == "" {
+		return nil
+	}
+	b.emitter.Emit(eventName, payload)
+	return nil
+}
+
+// coordinationEventName maps a coordination event type to its bridge event name.
+func coordinationEventName(eventType string) string {
+	switch eventType {
+	case "assigned":
+		return EventCoordinationAssigned
+	case "reassigned":
+		return EventCoordinationReassigned
+	case "progress":
+		return EventCoordinationProgress
+	case "blocked":
+		return EventCoordinationBlocked
+	case "completed":
+		return EventCoordinationCompleted
+	case "canceled":
+		return EventCoordinationCanceled
+	default:
+		return ""
+	}
+}
+
 func (b *Bridge) GetWorkspaceSnapshot(request application.WorkspaceSnapshotRequest) (application.WorkspaceSnapshot, error) {
 	return b.service.GetWorkspaceSnapshot(b.getContext(), request)
 }

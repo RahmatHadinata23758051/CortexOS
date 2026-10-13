@@ -1,10 +1,12 @@
 import Phaser from 'phaser'
 import type { OfficeActivityEvent, StaffBrainState, StaffSummary } from '../types/office'
+import type { StaffAssignmentStatus } from '../types/coordination'
 
 export type OfficeSceneState = {
   staff: readonly StaffSummary[]
   activity: readonly OfficeActivityEvent[]
   brainState?: StaffBrainState
+  coordination?: readonly StaffAssignmentStatus[]
   onStaffSelect?: (staffId: string) => void
 }
 
@@ -60,11 +62,19 @@ export class OfficeScene extends Phaser.Scene {
       const x = zone.x + 38 + (index % 4) * 50
       const y = zone.y + 68 + Math.floor(index / 4) * 55
       const avatar = this.add.container(x, y)
+      const assignment = this.officeState.coordination?.find((item) => item.staffId === member.id)
 
-      // Base body circle
-      const body = this.add.circle(0, 0, 15, 0x92a5b4).setStrokeStyle(3, availabilityColor[member.availability])
+      // Base body circle. Orchestra coordination state takes precedence over
+      // availability for the avatar ring, while availability remains the fallback.
+      const body = this.add.circle(0, 0, 15, 0x92a5b4).setStrokeStyle(3, this.coordinationColor(assignment) ?? availabilityColor[member.availability])
       // Name label
       const name = this.add.text(0, 21, member.name.slice(0, 12), { color: '#e9eef0', fontFamily: 'monospace', fontSize: '10px' }).setOrigin(0.5, 0)
+
+      if (assignment && assignment.state !== 'idle') {
+        const markerColor = this.coordinationColor(assignment) ?? 0x92a5b4
+        const marker = this.add.circle(12, -12, 4, markerColor).setStrokeStyle(1, 0x151d28, 1)
+        avatar.add(marker)
+      }
 
       // Brain state visual: add a thinking indicator / pulse ring
       if (this.officeState.brainState && this.officeState.brainState.staffId === member.id) {
@@ -109,6 +119,23 @@ export class OfficeScene extends Phaser.Scene {
         return 0xff806d // coral
       default:
         return 0x92a5b4 // default gray
+    }
+  }
+
+  private coordinationColor(assignment?: StaffAssignmentStatus): number | undefined {
+    switch (assignment?.state) {
+      case 'running':
+        return 0x8faeff
+      case 'blocked':
+        return 0xe0b54d
+      case 'awaiting_inspection':
+        return 0xf7a55d
+      case 'completed':
+        return 0x88bf48
+      case 'failed':
+        return 0xff806d
+      default:
+        return undefined
     }
   }
 

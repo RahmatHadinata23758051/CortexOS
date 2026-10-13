@@ -41,6 +41,18 @@ const (
 	EventToolFailed   = "cortexos:tool:failed"
 )
 
+// Multi-Staff coordination lifecycle events emitted across the bridge.
+// Payloads are bounded coordination event projections with opaque IDs only.
+const (
+	EventCoordinationChanged    = "cortexos:coordination:changed"
+	EventCoordinationAssigned   = "cortexos:coordination:assigned"
+	EventCoordinationReassigned = "cortexos:coordination:reassigned"
+	EventCoordinationProgress   = "cortexos:coordination:progress"
+	EventCoordinationBlocked    = "cortexos:coordination:blocked"
+	EventCoordinationCompleted  = "cortexos:coordination:completed"
+	EventCoordinationCanceled   = "cortexos:coordination:canceled"
+)
+
 // RuntimeEventHook is a callback function invoked when a bridge runtime event occurs.
 type RuntimeEventHook func(eventName string, payload any)
 
