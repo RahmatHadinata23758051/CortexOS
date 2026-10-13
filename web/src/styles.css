@@ -280,6 +280,9 @@ button, a, input { -webkit-tap-highlight-color: transparent; }
 .feed-empty { font: .7rem 'DM Mono', monospace; color: #728394; text-align: center; padding: 12px 0; }
 .terminal-overlay { margin-top: 14px; background: #0f141c; border: 1px solid #334050; border-radius: 4px; font-family: 'DM Mono', monospace; }
 .terminal-header { display: flex; justify-content: space-between; align-items: center; padding: 8px 12px; background: #19212c; border-bottom: 1px solid #283444; }
+.terminal-actions { display: flex; align-items: center; gap: 8px; }
+.ask-brain-button { background: var(--acid); border: 1px solid #c4dc42; color: var(--ink); font: 700 .75rem 'DM Mono', monospace; padding: 4px 10px; border-radius: 3px; min-height: unset; cursor: pointer; }
+.ask-brain-button:hover { background: #c9e338; }
 .terminal-title { margin: 0; font-size: .75rem; color: var(--acid); letter-spacing: .08em; }
 .terminal-close { border: 0; background: transparent; color: #8fa1b2; font-size: .9rem; cursor: pointer; min-height: unset; padding: 2px 6px; }
 .terminal-close:hover { color: #ff806d; }

@@ -5,7 +5,6 @@ import {
   brainBridgeSchemaVersion,
   BrainEventNames,
   type BrainBridge,
-  type BrainDispatchResult,
   type BrainState,
 } from '../types'
 

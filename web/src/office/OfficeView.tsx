@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState, useCallback, type ReactNode } from 'react'
-import { type StaffSummary, type OfficeActivityEvent, type TerminalOverlayState } from '../types/office'
+import { useBrainDispatch } from '../hooks/useBrainDispatch'
+import { type StaffSummary, type StaffBrainState, type OfficeActivityEvent, type TerminalOverlayState } from '../types/office'
 import { loadOfficeSnapshot, createOfficeEventSource, staffById, type OfficeState } from '../bridge/office'
 import { wailsRuntimeBridge } from '../types'
 
 interface OfficeSceneHandle {
-  setOfficeState(state: { staff: readonly StaffSummary[]; activity: readonly OfficeActivityEvent[]; onStaffSelect?: (id: string) => void }): void
+  setOfficeState(state: { staff: readonly StaffSummary[]; activity: readonly OfficeActivityEvent[]; brainState?: StaffBrainState; onStaffSelect?: (id: string) => void }): void
 }
 
 interface OfficeGameHandle {
@@ -88,13 +89,20 @@ function ActivityFeed({ events }: { events: readonly OfficeActivityEvent[] }) {
   )
 }
 
-function TerminalOverlay({ state, onClose }: { state: TerminalOverlayState; onClose: () => void }) {
+function TerminalOverlay({ state, onClose, onAskBrain }: { state: TerminalOverlayState; onClose: () => void; onAskBrain?: (staffId: string) => void }) {
   if (!state.visible) return null
   return (
     <div className="terminal-overlay" role="dialog" aria-modal="true" aria-label="Staff terminal">
       <header className="terminal-header">
         <h4 className="terminal-title">{state.title ?? `Staff: ${state.staffId}`}</h4>
-        <button className="terminal-close" onClick={onClose} aria-label="Close terminal">✕</button>
+        <div className="terminal-actions">
+          {onAskBrain && state.staffId && (
+            <button className="ask-brain-button" onClick={() => onAskBrain(state.staffId!)} aria-label={`Ask Brain with ${state.staffId}`}>
+              🧠 Ask Brain
+            </button>
+          )}
+          <button className="terminal-close" onClick={onClose} aria-label="Close terminal">✕</button>
+        </div>
       </header>
       <pre className="terminal-body" aria-live="polite">
         {state.lines.map((line, i) => <div key={i}>{line}</div>)}
@@ -112,16 +120,21 @@ function ReadOnlyBanner() {
   )
 }
 
-function OfficeCanvas({ staff, onSelect }: { staff: readonly StaffSummary[]; onSelect: (id: string) => void }) {
+function OfficeCanvas({ staff, onSelect, brainState }: { staff: readonly StaffSummary[]; onSelect: (id: string) => void; brainState?: StaffBrainState }) {
   const canvasRef = useRef<HTMLDivElement>(null)
   const gameRef = useRef<OfficeGameHandle | null>(null)
   const sceneRef = useRef<OfficeSceneHandle | null>(null)
+  // Event-driven Phaser update: Phaser only rebuilds its internal GameObjects when
+  // the lifecycle phase or staffId changes (via phaseKey). Per-token output changes
+  // are throttled by not including `brainState.speechText` in the key.
+  const phaseKey = brainState ? `${brainState.staffId ?? 'none'}:${brainState.state}` : 'idle'
 
+  // Phaser game instance is created once; updates go through setOfficeState.
   useEffect(() => {
     let mounted = true
     void import('../office/OfficeScene').then(({ createOfficeGame }) => {
       if (!mounted || !canvasRef.current) return
-      const game = createOfficeGame(canvasRef.current, { staff, activity: [], onStaffSelect: onSelect }) as unknown as OfficeGameHandle
+      const game = createOfficeGame(canvasRef.current, { staff, activity: [], brainState, onStaffSelect: onSelect }) as unknown as OfficeGameHandle
       gameRef.current = game
       sceneRef.current = game.scene.getScene('office')
     })
@@ -133,13 +146,16 @@ function OfficeCanvas({ staff, onSelect }: { staff: readonly StaffSummary[]; onS
         sceneRef.current = null
       }
     }
-  }, [onSelect, staff])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
+  // Only trigger setOfficeState when phaseKey (staffId + lifecycle) changes.
   useEffect(() => {
     if (sceneRef.current) {
-      sceneRef.current.setOfficeState({ staff, activity: [], onStaffSelect: onSelect })
+      sceneRef.current.setOfficeState({ staff, activity: [], brainState, onStaffSelect: onSelect })
     }
-  }, [staff, onSelect])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phaseKey])
 
   return <div ref={canvasRef} className="office-canvas" role="img" aria-label="Virtual office canvas" />
 }
@@ -151,6 +167,9 @@ export function OfficeView({ className = '' }: OfficeViewProps): ReactNode {
   const [terminalState, setTerminalState] = useState<TerminalOverlayState>({ visible: false, lines: [] })
   const eventSource = useRef(createOfficeEventSource())
 
+  // Brain hook drives the local reasoning session and per-staff activity.
+  const { state: brainState, output, isRunning, run, reset } = useBrainDispatch({ bridge: wailsRuntimeBridge });
+
   const handleStaffSelect = useCallback((staffId: string) => {
     setSelectedStaffId(staffId)
     const member = staffById(officeState.status === 'success' ? officeState.snapshot.staff : [], staffId)
@@ -159,7 +178,19 @@ export function OfficeView({ className = '' }: OfficeViewProps): ReactNode {
     }
   }, [officeState])
 
+  const handleAskBrain = useCallback((staffId: string) => {
+    const member = staffById(officeState.status === 'success' ? officeState.snapshot.staff : [], staffId)
+    if (!member) return
+    const userPrompt = `As ${member.name} (${member.role}), review the current project state and suggest the next actionable step.`
+    reset()
+    void run({ userPrompt, staffId: member.id })
+  }, [officeState, run, reset])
+
   const closeTerminal = useCallback(() => setTerminalState({ visible: false, lines: [] }), [])
+
+  const brainStateForPhaser: StaffBrainState | undefined = isRunning || brainState !== 'idle'
+    ? { staffId: selectedStaffId, state: brainState, speechText: isRunning ? output.slice(-120) || 'Thinking…' : undefined }
+    : undefined
 
   useEffect(() => {
     let active = true
@@ -178,7 +209,11 @@ export function OfficeView({ className = '' }: OfficeViewProps): ReactNode {
       <ReadOnlyBanner />
       <div className="office-grid">
         <main className="office-main">
-          <OfficeCanvas staff={staff} onSelect={handleStaffSelect} />
+          <OfficeCanvas
+            staff={staff}
+            onSelect={handleStaffSelect}
+            brainState={brainStateForPhaser}
+          />
         </main>
         <div className="office-side">
           <StaffDirectory staff={staff} selectedId={selectedStaffId} onSelect={handleStaffSelect} />
@@ -186,7 +221,11 @@ export function OfficeView({ className = '' }: OfficeViewProps): ReactNode {
           <ActivityFeed events={activityEvents} />
         </div>
       </div>
-      <TerminalOverlay state={terminalState} onClose={closeTerminal} />
+      <TerminalOverlay
+        state={terminalState}
+        onClose={closeTerminal}
+        onAskBrain={handleAskBrain}
+      />
     </div>
   )
 }

@@ -39,6 +39,12 @@ export type TerminalOverlayState = {
   lines: readonly string[]
 }
 
+export type StaffBrainState = {
+  staffId?: string
+  state: 'idle' | 'planning' | 'executing' | 'streaming' | 'tool_calling' | 'completed' | 'failed' | 'canceled'
+  speechText?: string
+}
+
 export type OfficeSnapshot = {
   schemaVersion: typeof officeSchemaVersion
   staff: readonly StaffSummary[]
