@@ -2,9 +2,12 @@ package bootstrap
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
+	"time"
 
 	"github.com/RahmatHadinata23758051/CortexOS/internal/cortex/application"
 	harnesssqlite "github.com/RahmatHadinata23758051/CortexOS/internal/cortex/harness/sqlite"
@@ -146,6 +149,9 @@ func (w *workspaceWorktreeInspector) InspectWorktreeState(ctx context.Context, w
 }
 
 func defaultWorkspaceDataRoot() (string, error) {
+	if custom := os.Getenv("CORTEXOS_DATA_ROOT"); custom != "" {
+		return custom, nil
+	}
 	configDir, err := os.UserConfigDir()
 	if err != nil {
 		return "", fmt.Errorf("resolve CortexOS config directory: %w", err)
@@ -181,5 +187,46 @@ func Run() error {
 	bridge := platform.NewBridge(service)
 	app.OnStartup(bridge.SetRuntimeContext)
 	app.Bind(bridge)
+
+	// P8-03 packaged smoke probe: when CORTEXOS_SMOKE_MERGE_TASK and CORTEXOS_SMOKE_QUIT_MS
+	// are both set, run a single merge via the production bridge and write result to
+	// CORTEXOS_SMOKE_RESULT_FILE. This only activates in test environments.
+	if taskID := os.Getenv("CORTEXOS_SMOKE_MERGE_TASK"); taskID != "" {
+		if _, ok := smokeQuitDelay(os.Getenv("CORTEXOS_SMOKE_QUIT_MS")); ok {
+			app.OnStartup(func(ctx context.Context) {
+				result, err := bridge.MergeOrchestraTask(application.OrchestraMergeRequest{
+					SchemaVersion: application.OrchestraBridgeSchemaVersion,
+					TaskID:        taskID,
+					Note:          "packaged smoke merge",
+				})
+				if resultFile := os.Getenv("CORTEXOS_SMOKE_RESULT_FILE"); resultFile != "" {
+					payload := map[string]any{
+						"taskID": result.TaskID,
+						"status": result.Status,
+						"schema": result.SchemaVersion,
+						"error":  "",
+					}
+					if err != nil {
+						payload["error"] = err.Error()
+					}
+					if b, _ := json.Marshal(payload); b != nil {
+						_ = os.WriteFile(resultFile, b, 0o600)
+					}
+				}
+			})
+		}
+	}
+
 	return app.Run()
+}
+
+func smokeQuitDelay(raw string) (time.Duration, bool) {
+	if raw == "" {
+		return 0, false
+	}
+	ms, err := strconv.Atoi(raw)
+	if err != nil || ms < 0 {
+		return 0, false
+	}
+	return time.Duration(ms) * time.Millisecond, true
 }
