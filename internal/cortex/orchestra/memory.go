@@ -129,4 +129,55 @@ func (s *MemoryTaskStore) GetExecution(ctx context.Context, id ExecutionID) (Exe
 	return exec, nil
 }
 
+// CommitMerge applies the complete merge payload under one memory-store lock.
+// It mirrors the SQLite compare-and-set contract so tests do not hide concurrency bugs.
+func (s *MemoryTaskStore) CommitMerge(ctx context.Context, commit MergeCommit) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if err := commit.Validate(); err != nil {
+		return err
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	current, ok := s.tasks[commit.MergedTask.ID]
+	if !ok {
+		return ErrNotFound
+	}
+	if current.Status != TaskAwaitingInspection {
+		return fmt.Errorf("%w: task %s is %s", ErrMergeConflict, current.ID, current.Status)
+	}
+	if commit.AcceptedEvent.From != current.Status || commit.AcceptedEvent.To != TaskSuccess {
+		return fmt.Errorf("%w: accepted event transition does not match current task", ErrInvalidTask)
+	}
+
+	// Validate every update before mutating any map to retain all-or-nothing semantics.
+	for i, task := range commit.UnblockedTasks {
+		currentDependent, exists := s.tasks[task.ID]
+		if !exists {
+			return ErrNotFound
+		}
+		if currentDependent.Status != TaskDraft || commit.ValidatedEvents[i].From != TaskDraft || commit.ValidatedEvents[i].To != TaskReady {
+			return fmt.Errorf("%w: dependent task %s changed concurrently", ErrMergeConflict, task.ID)
+		}
+	}
+
+	s.tasks[commit.MergedTask.ID] = commit.MergedTask
+	for _, task := range commit.UnblockedTasks {
+		s.tasks[task.ID] = task
+	}
+	appendMemoryEvent := func(event TaskEvent) {
+		s.seq[event.TaskID]++
+		event.Sequence = s.seq[event.TaskID]
+		s.events[event.TaskID] = append(s.events[event.TaskID], event)
+	}
+	appendMemoryEvent(commit.AcceptedEvent)
+	for _, event := range commit.ValidatedEvents {
+		appendMemoryEvent(event)
+	}
+	return nil
+}
+
 var ErrNotFound = errors.New("orchestra: task not found")
