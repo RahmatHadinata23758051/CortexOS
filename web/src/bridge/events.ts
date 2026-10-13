@@ -1,9 +1,10 @@
-import { CockpitEventNames, KnowledgeEventNames } from '../types'
+import { BrainEventNames, CockpitEventNames, KnowledgeEventNames } from '../types'
 
 export type CockpitEventName = (typeof CockpitEventNames)[keyof typeof CockpitEventNames]
 export type KnowledgeEventName = (typeof KnowledgeEventNames)[keyof typeof KnowledgeEventNames]
+export type BrainEventName = (typeof BrainEventNames)[keyof typeof BrainEventNames]
 export type CockpitEventPayload = unknown
-export type BridgeEventName = CockpitEventName | KnowledgeEventName
+export type BridgeEventName = CockpitEventName | KnowledgeEventName | BrainEventName
 export type CockpitEventHandler = (payload: CockpitEventPayload) => void
 
 type WailsRuntime = {
@@ -39,3 +40,5 @@ export function onCockpitEvent(eventName: BridgeEventName | string, handler: Coc
 
 export function onCockpitWorkspaceChanged(handler: CockpitEventHandler): () => void { return onCockpitEvent(CockpitEventNames.WorkspaceChanged, handler) }
 export function onCockpitRuntimeChanged(handler: CockpitEventHandler): () => void { return onCockpitEvent(CockpitEventNames.RuntimeChanged, handler) }
+export function onBrainStreamChunk(handler: CockpitEventHandler): () => void { return onCockpitEvent(BrainEventNames.StreamChunk, handler) }
+export function onBrainStateChanged(handler: CockpitEventHandler): () => void { return onCockpitEvent(BrainEventNames.StateChanged, handler) }

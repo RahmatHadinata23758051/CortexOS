@@ -23,32 +23,32 @@ type BrainPort interface {
 // BrainDispatchRequest carries the input for a brain dispatch.
 type BrainDispatchRequest struct {
 	// TaskID is a unique identifier for this dispatch (for tracing/correlation).
-	TaskID string
+	TaskID string `json:"taskId"`
 
 	// UserPrompt is the raw user instruction.
-	UserPrompt string
+	UserPrompt string `json:"userPrompt"`
 
 	// StaffID optional: routes to a specific staff system prompt.
-	StaffID string
+	StaffID string `json:"staffId,omitempty"`
 
 	// Config optional: overrides session budgets (timeout, step limit, token limit).
-	Config *SessionConfig
+	Config *SessionConfig `json:"config,omitempty"`
 
 	// SchemaVersion identifies the bridge contract version.
-	SchemaVersion string
+	SchemaVersion string `json:"schemaVersion"`
 }
 
 // BrainDispatchResult carries the output of a completed brain dispatch.
 type BrainDispatchResult struct {
-	TaskID        string
-	StaffID       string
-	State         string // one of: idle, planning, executing, streaming, tool_calling, completed, failed, canceled
-	Output        string
-	Steps         int
-	Tokens        int
-	Duration      time.Duration
-	Error         string
-	SchemaVersion string
+	TaskID        string        `json:"taskId"`
+	StaffID       string        `json:"staffId,omitempty"`
+	State         string        `json:"state"` // one of: idle, planning, executing, streaming, tool_calling, completed, failed, canceled
+	Output        string        `json:"output"`
+	Steps         int           `json:"steps"`
+	Tokens        int           `json:"tokens"`
+	Duration      time.Duration `json:"duration"`
+	Error         string        `json:"error,omitempty"`
+	SchemaVersion string        `json:"schemaVersion"`
 }
 
 // StreamChunkHandler processes a single streaming chunk from the brain.
@@ -58,31 +58,31 @@ type StreamChunkHandler func(chunk StreamChunk)
 // StreamChunk represents a token/state delta during streaming.
 type StreamChunk struct {
 	// TaskID correlates the chunk to its dispatch.
-	TaskID string
+	TaskID string `json:"taskId"`
 
 	// Type: "token" | "tool_call" | "state_change" | "done" | "error"
-	Type string
+	Type string `json:"type"`
 
 	// Data holds the payload: token text, tool call JSON, state name, or error message.
-	Data string
+	Data string `json:"data,omitempty"`
 
 	// Sequence is a monotonically increasing number for ordering.
-	Sequence int
+	Sequence int `json:"sequence"`
 
 	// Timestamp when the chunk was produced.
-	Timestamp time.Time
+	Timestamp time.Time `json:"timestamp"`
 }
 
 // SessionConfig mirrors brain.SessionConfig for the bridge boundary.
 type SessionConfig struct {
 	// Timeout is the maximum wall-clock time for the entire session.
-	Timeout time.Duration
+	Timeout time.Duration `json:"timeout,omitempty"`
 
 	// StepLimit is the maximum number of reasoning steps.
-	StepLimit int
+	StepLimit int `json:"stepLimit,omitempty"`
 
 	// MaxTokens is the maximum total tokens (prompt + completion).
-	MaxTokens int
+	MaxTokens int `json:"maxTokens,omitempty"`
 }
 
 // BrainBridgeContract identifies the schema contract for the brain bridge.
