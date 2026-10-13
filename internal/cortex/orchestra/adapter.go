@@ -245,14 +245,10 @@ func (a *ProductionAdapter) MergeTask(ctx context.Context, id TaskID, note strin
 		return Task{}, rejectionErr
 	}
 
-	// 4. Authoritative transition to TaskSuccess
+	// 4. Build atomic merge payload (merged task + event + unblocked dependent tasks + events)
 	successTask := result.AcceptedTask
 	successTask.UpdatedAt = time.Now().UTC()
-	if err := a.tasks.SaveTask(ctx, successTask); err != nil {
-		return Task{}, fmt.Errorf("persist accepted task: %w", err)
-	}
 
-	// 5. Append accepted event
 	evMsg := "inspection accepted and merged"
 	if note != "" {
 		evMsg = fmt.Sprintf("inspection accepted: %s", note)
@@ -261,7 +257,8 @@ func (a *ProductionAdapter) MergeTask(ctx context.Context, id TaskID, note strin
 	for _, ev := range evidenceList {
 		evidenceIDs = append(evidenceIDs, ev.ID)
 	}
-	if err := a.tasks.AppendEvent(ctx, TaskEvent{
+
+	acceptedEvent := TaskEvent{
 		TaskID:      id,
 		ExecutionID: exec.ID,
 		Type:        EventInspectionAccepted,
@@ -270,16 +267,111 @@ func (a *ProductionAdapter) MergeTask(ctx context.Context, id TaskID, note strin
 		Message:     evMsg,
 		EvidenceIDs: evidenceIDs,
 		OccurredAt:  time.Now().UTC(),
-	}); err != nil {
-		return Task{}, fmt.Errorf("append inspection accepted event: %w", err)
 	}
 
-	// 6. Update plan graph: unblock dependent tasks
-	if err := a.updatePlanGraph(ctx, task.ProjectID); err != nil {
-		return successTask, fmt.Errorf("update plan graph after merge: %w", err)
+	unblockedTasks, validatedEvents, err := a.calculatePlanUnblocking(ctx, task.ProjectID, successTask.ID)
+	if err != nil {
+		return Task{}, fmt.Errorf("calculate plan unblocking: %w", err)
+	}
+
+	commitPayload := MergeCommit{
+		MergedTask:      successTask,
+		AcceptedEvent:   acceptedEvent,
+		UnblockedTasks:  unblockedTasks,
+		ValidatedEvents: validatedEvents,
+	}
+
+	// 5. If store supports atomic CommitMerge, execute under single transaction
+	if committer, ok := a.tasks.(MergeCommitter); ok {
+		if err := committer.CommitMerge(ctx, commitPayload); err != nil {
+			return Task{}, fmt.Errorf("atomic commit merge: %w", err)
+		}
+		return successTask, nil
+	}
+
+	// Fallback for non-atomic stores (e.g. testing doubles without MergeCommitter)
+	if err := a.tasks.SaveTask(ctx, successTask); err != nil {
+		return Task{}, fmt.Errorf("persist accepted task: %w", err)
+	}
+	if err := a.tasks.AppendEvent(ctx, acceptedEvent); err != nil {
+		return Task{}, fmt.Errorf("append inspection accepted event: %w", err)
+	}
+	for i, ut := range unblockedTasks {
+		if err := a.tasks.SaveTask(ctx, ut); err != nil {
+			return successTask, fmt.Errorf("persist unblocked task %s: %w", ut.ID, err)
+		}
+		if err := a.tasks.AppendEvent(ctx, validatedEvents[i]); err != nil {
+			return successTask, fmt.Errorf("append validated event for %s: %w", ut.ID, err)
+		}
 	}
 
 	return successTask, nil
+}
+
+// calculatePlanUnblocking determines which draft tasks become ready when the merged task succeeds.
+func (a *ProductionAdapter) calculatePlanUnblocking(ctx context.Context, projectID string, newlySucceededID TaskID) ([]Task, []TaskEvent, error) {
+	tasks, err := a.tasks.ListTasks(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	var projectTasks []Task
+	for _, t := range tasks {
+		if projectID == "" || t.ProjectID == projectID {
+			projectTasks = append(projectTasks, t)
+		}
+	}
+
+	if len(projectTasks) == 0 {
+		return nil, nil, nil
+	}
+
+	// Map current statuses, setting newlySucceededID to TaskSuccess
+	statusMap := make(map[TaskID]TaskStatus, len(projectTasks))
+	for _, t := range projectTasks {
+		if t.ID == newlySucceededID {
+			statusMap[t.ID] = TaskSuccess
+		} else {
+			statusMap[t.ID] = t.Status
+		}
+	}
+
+	var unblockedTasks []Task
+	var validatedEvents []TaskEvent
+	now := time.Now().UTC()
+
+	for _, t := range projectTasks {
+		if t.Status != TaskDraft || len(t.Dependencies) == 0 {
+			continue
+		}
+
+		allDone := true
+		for _, depID := range t.Dependencies {
+			if statusMap[depID] != TaskSuccess {
+				allDone = false
+				break
+			}
+		}
+
+		if allDone {
+			res, transErr := ApplyTransition(t, TransitionValidate)
+			if transErr != nil {
+				continue
+			}
+			res.Task.UpdatedAt = now
+			unblockedTasks = append(unblockedTasks, res.Task)
+			validatedEvents = append(validatedEvents, TaskEvent{
+				TaskID:     t.ID,
+				Type:       EventTaskValidated,
+				From:       t.Status,
+				To:         TaskReady,
+				Message:    "all dependencies completed; task unblocked and ready",
+				OccurredAt: now,
+			})
+		}
+	}
+
+	return unblockedTasks, validatedEvents, nil
 }
 
 func (a *ProductionAdapter) resolveExecutionAndEvidence(ctx context.Context, task Task) (Execution, []InspectionEvidence, error) {
