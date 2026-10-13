@@ -120,6 +120,42 @@ func TestRoutingAdapter_HappyPath(t *testing.T) {
 	}
 }
 
+type routingGroundingStub struct {
+	bundle application.KnowledgeContextBundle
+	err    error
+}
+
+func (s routingGroundingStub) GroundRoutingContext(context.Context, application.KnowledgeContextRequest) (application.KnowledgeContextBundle, error) {
+	return s.bundle, s.err
+}
+
+func TestRoutingAdapter_GroundsPlanAndReturnsContextRefs(t *testing.T) {
+	fakeBrain := application.NewFakeBrainAdapter("test-brain")
+	fakeBrain.SetResult("corr-ground-plan", application.BrainDispatchResult{
+		TaskID: "corr-ground-plan", State: "completed", Output: "PLAN:1|Grounded step", SchemaVersion: application.BrainBridgeContract,
+	})
+	orch := &testOrchestraPort{}
+	adapter, err := NewBrainOrchestraRoutingAdapter(BrainOrchestraRoutingAdapterConfig{
+		Brain: fakeBrain, Orchestra: orch, ProjectID: "proj-1",
+		Grounding: routingGroundingStub{bundle: application.KnowledgeContextBundle{
+			Items: []application.KnowledgeContextItem{{ID: "doc-1", Title: "Architecture", SourceLabel: "docs/arch.md", Snippet: "safe context", Score: 0.9}},
+			SchemaVersion: application.KnowledgeContextSchemaVersion,
+		}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	request := validRoutingRequest()
+	request.CorrelationID = "corr-ground"
+	result, err := adapter.RouteBrainToOrchestra(context.Background(), request)
+	if err != nil {
+		t.Fatalf("grounded route failed: %v", err)
+	}
+	if len(result.GroundedContext) != 1 || result.GroundedContext[0].ID != "doc-1" {
+		t.Fatalf("unexpected grounded refs: %#v", result.GroundedContext)
+	}
+}
+
 func TestRoutingAdapter_DuplicateCorrelationId(t *testing.T) {
 	fakeBrain := application.NewFakeBrainAdapter("test-brain")
 	fakeBrain.SetResult("corr-dup-plan", application.BrainDispatchResult{

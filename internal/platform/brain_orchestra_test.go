@@ -66,3 +66,82 @@ func TestBridgeRouteBrainTaskToOrchestraEmitsLifecycleEvent(t *testing.T) {
 		t.Fatalf("unexpected event payload: %#v", payload)
 	}
 }
+
+type routePortWithGroundingStub struct{}
+
+func (routePortWithGroundingStub) RouteBrainToOrchestra(_ context.Context, req application.BrainOrchestraRouteRequest) (application.BrainOrchestraRouteResult, error) {
+	return application.BrainOrchestraRouteResult{
+		CorrelationID:   req.CorrelationID,
+		OrchestraTaskID: "route-grounded",
+		Status:          "accepted",
+		GroundedContext: []application.GroundedContextRef{
+			{ID: "doc-1", Title: "Spec", SourceLabel: "docs/spec.md"},
+		},
+		SchemaVersion: application.BrainOrchestraBridgeSchemaVersion,
+	}, nil
+}
+
+type groundingStub struct{}
+
+func (groundingStub) GroundRoutingContext(_ context.Context, req application.KnowledgeContextRequest) (application.KnowledgeContextBundle, error) {
+	return application.KnowledgeContextBundle{
+		Items: []application.KnowledgeContextItem{
+			{ID: "doc-1", Title: "Spec", SourceLabel: "docs/spec.md", Snippet: "Architecture plan", Score: 0.95},
+		},
+		TotalChars:    17,
+		SchemaVersion: application.KnowledgeContextSchemaVersion,
+	}, nil
+}
+
+func TestBridgeRouteBrainTaskEmitsGroundingEventWhenContextPresent(t *testing.T) {
+	service := application.NewServiceWithBrainOrchestra(routePortWithGroundingStub{})
+	b := NewBridge(service)
+
+	emitted := make(map[string]bool)
+	unsubscribe := b.RegisterEventHook(func(name string, _ any) {
+		emitted[name] = true
+	})
+	defer unsubscribe()
+
+	_, err := b.RouteBrainTaskToOrchestra(application.BrainOrchestraRouteRequest{
+		CorrelationID:      "corr-grounded",
+		UserPrompt:         "plan with context",
+		Title:              "Plan",
+		AcceptanceCriteria: []string{"done"},
+		SchemaVersion:      application.BrainOrchestraBridgeSchemaVersion,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !emitted[EventKnowledgeContextGrounded] || !emitted[EventBrainRouteAccepted] {
+		t.Fatalf("expected grounding and route accepted events, got %#v", emitted)
+	}
+}
+
+func TestBridgeGroundRoutingContextMethodAndEvent(t *testing.T) {
+	service := application.NewService()
+	service.SetKnowledgeGrounding(groundingStub{})
+	b := NewBridge(service)
+
+	var emittedEvent string
+	unsubscribe := b.RegisterEventHook(func(name string, _ any) {
+		emittedEvent = name
+	})
+	defer unsubscribe()
+
+	bundle, err := b.GroundRoutingContext(application.KnowledgeContextRequest{
+		ProjectID:     "proj-1",
+		Query:         "architecture",
+		Budget:        application.DefaultKnowledgeContextBudget(),
+		SchemaVersion: application.KnowledgeContextSchemaVersion,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(bundle.Items) != 1 || bundle.Items[0].Title != "Spec" {
+		t.Fatalf("unexpected bundle: %#v", bundle)
+	}
+	if emittedEvent != EventKnowledgeContextGrounded {
+		t.Fatalf("expected %q, got %q", EventKnowledgeContextGrounded, emittedEvent)
+	}
+}

@@ -1,9 +1,9 @@
 # Phase 13 Evidence: Brain ↔ Orchestra Routing, Tool Approval, and Staff Coordination
 
 **Parent Epic:** BAN-155  
-**Sprint:** 13.3 Multi-Staff Coordination
+**Sprint:** 13.4 Knowledge Retrieval Grounding
 **Date:** 2026-10-13
-**Status:** Sprint 13.3 completed and verified; full-suite version baseline remains pre-existing
+**Status:** Sprint 13.4 implementation slice completed and verified; full-suite version baseline remains pre-existing
 
 ## Implemented slices
 
@@ -57,8 +57,46 @@ go vet ./internal/cortex/application ./internal/cortex/bridge ./internal/cortex/
 - **BAN-170**: 13.3.2 Implement coordination projection and application service (`Done`)
 - **BAN-171**: 13.3.3 Wire coordination Wails bridge, events, and Office/Cockpit mapping (`Done`)
 - **BAN-172**: 13.3.4 Add multi-Staff integration, performance, and security evidence (`Done`)
-- **BAN-163**: Sprint 13.4 Knowledge Retrieval Grounding queued (`Todo`)
+- **BAN-163**: Sprint 13.4 Knowledge Retrieval Grounding (`In Progress`)
+- **BAN-173**: 13.4.1 Define routing Knowledge grounding contract and budget policy (`Backlog`)
+- **BAN-174**: 13.4.2 Implement retrieval grounding adapter via application port (`Backlog`)
+- **BAN-175**: 13.4.3 Wire routing context into Brain→Orchestra, Wails bridge, and events (`Backlog`)
+- **BAN-176**: 13.4.4 Add context inspection, provenance redaction tests, and evidence (`Backlog`)
 - **BAN-164**: Sprint 13.5 End-to-End Hardening queued (`Todo`)
+
+## Sprint 13.4: Knowledge Retrieval Grounding Implemented Slices
+
+| Slice | Files | Status |
+|---|---|---|
+| Versioned context DTOs and budget policy | `internal/cortex/application/knowledge_context.go` | Implemented |
+| Budget, deterministic ordering, timeout, empty, and redaction tests | `internal/cortex/application/knowledge_context_test.go`, `internal/cortex/bridge/knowledge_grounding_adapter_test.go` | Implemented |
+| Application grounding port and adapter | `internal/cortex/application/service.go`, `internal/cortex/bridge/knowledge_grounding_adapter.go` | Implemented |
+| Workspace Knowledge bridge adapter and tests | `internal/cortex/bridge/workspace_knowledge_adapter.go`, `internal/cortex/bridge/workspace_knowledge_adapter_test.go` | Implemented |
+| Brain→Orchestra prompt grounding and route references | `internal/cortex/bridge/brain_orchestra_adapter.go`, `internal/cortex/application/brain_orchestra.go` | Implemented |
+| Wails inspection method and grounding lifecycle event | `internal/platform/bridge.go`, `internal/platform/events.go` | Implemented |
+| Frontend contract, bridge helper, inspector provenance/score display | `web/src/types/knowledge-context.ts`, `web/src/bridge/knowledge-context.ts`, `web/src/components/brain/ContextInspector.tsx` | Implemented |
+| Go ↔ TypeScript context binding and latency/size checks | `web/src/integration/ban163_grounding_bindings.test.ts` | Implemented |
+
+## Sprint 13.4 Contract and authority guarantees
+
+- Context retrieval is advisory; unavailable, empty, malformed, or timed-out retrieval degrades without mutating Orchestra authority.
+- Context is bounded by item, snippet, total-character, and timeout ceilings (`20`, `2000`, `8000`, `10000ms`).
+- Results are deterministic: descending score, then document ID; route DTOs expose only opaque IDs, titles, and sanitized source labels.
+- Absolute paths and credential-like text are replaced before prompt assembly or UI/event exposure.
+- Prompt assembly is deterministic and uses the application grounding port rather than direct Knowledge store coupling.
+
+## Sprint 13.4 Verification
+
+```text
+go test ./internal/cortex/application ./internal/cortex/bridge ./internal/platform ./internal/bootstrap -count=1 PASS
+go vet ./internal/cortex/application ./internal/cortex/bridge ./internal/cortex/orchestra ./internal/platform ./internal/bootstrap PASS
+npm --prefix web test PASS (34 files / 209 tests)
+npm --prefix web run build PASS
+npm --prefix web run lint PASS
+npm --prefix web run typecheck PASS
+```
+
+Note: `go test -race` was attempted but the local Windows cgo toolchain failed before package compilation (`cgo.exe`); no runtime race result is claimed.
 
 ## Sprint 13.3: Multi-Staff Coordination Implemented Slices
 

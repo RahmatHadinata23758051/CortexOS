@@ -64,6 +64,10 @@ type BrainOrchestraRouteRequest struct {
 	// Optional; default 4096; max 32768.
 	MaxPlanTokens int `json:"maxPlanTokens,omitempty"`
 
+	// KnowledgeBudget optionally bounds retrieval grounding for the routing prompt.
+	// Omitted budgets use safe application defaults.
+	KnowledgeBudget *KnowledgeContextBudget `json:"knowledgeBudget,omitempty"`
+
 	// SchemaVersion identifies the bridge contract version.
 	SchemaVersion string `json:"schemaVersion"`
 }
@@ -104,6 +108,11 @@ func (req BrainOrchestraRouteRequest) Validate() error {
 	if req.MaxPlanTokens > 32768 {
 		return fmt.Errorf("%w: maxPlanTokens exceeds maximum of 32768", ErrBrainOrchestraInvalidRequest)
 	}
+	if req.KnowledgeBudget != nil {
+		if err := req.KnowledgeBudget.Validate(); err != nil {
+			return fmt.Errorf("%w: %v", ErrBrainOrchestraInvalidRequest, err)
+		}
+	}
 	return nil
 }
 
@@ -115,6 +124,10 @@ func (req BrainOrchestraRouteRequest) WithDefaults() BrainOrchestraRouteRequest 
 	if req.MaxPlanTokens <= 0 {
 		req.MaxPlanTokens = 4096
 	}
+	if req.KnowledgeBudget != nil {
+		budget := req.KnowledgeBudget.WithDefaults()
+		req.KnowledgeBudget = &budget
+	}
 	return req
 }
 
@@ -122,12 +135,13 @@ func (req BrainOrchestraRouteRequest) WithDefaults() BrainOrchestraRouteRequest 
 // It contains only correlation IDs and stable status codes; no provider output,
 // process details, raw errors, or filesystem paths.
 type BrainOrchestraRouteResult struct {
-	CorrelationID   string    `json:"correlationId"`
-	OrchestraTaskID string    `json:"orchestraTaskId,omitempty"`
-	Status          string    `json:"status"` // accepted | rejected | queued | canceled
-	Message         string    `json:"message,omitempty"`
-	SchemaVersion   string    `json:"schemaVersion"`
-	SubmittedAt     time.Time `json:"submittedAt"`
+	CorrelationID   string               `json:"correlationId"`
+	OrchestraTaskID string               `json:"orchestraTaskId,omitempty"`
+	Status          string               `json:"status"` // accepted | rejected | queued | canceled
+	Message         string               `json:"message,omitempty"`
+	GroundedContext []GroundedContextRef `json:"groundedContext,omitempty"`
+	SchemaVersion   string               `json:"schemaVersion"`
+	SubmittedAt     time.Time            `json:"submittedAt"`
 }
 
 // BrainOrchestraPlan is the bounded structured plan returned by the Brain planning call.

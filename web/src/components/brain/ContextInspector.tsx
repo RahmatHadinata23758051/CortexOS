@@ -5,6 +5,7 @@ export type ContextSnippet = {
   source: string
   title: string
   content: string
+  score?: number
 }
 
 export type ContextInspectorProps = {
@@ -56,6 +57,7 @@ export function ContextInspector({ snippets, isOpen = false, onToggle }: Context
                     >
                       <span className="snippet-title">{snippet.title}</span>
                       <span className="snippet-source">{snippet.source}</span>
+                      {typeof snippet.score === 'number' && <span className="snippet-score">{snippet.score.toFixed(2)}</span>}
                       <span className="expand-indicator" aria-hidden="true">
                         {isExpanded ? '▲' : '▼'}
                       </span>

@@ -209,14 +209,26 @@ func Run() error {
 	}
 
 	service := application.NewServiceWithWorkspaceAndOrchestraAndProviderAndBrain(workspaceService, orchestraPort, providerPort, brainPort)
+	knowledgePort, err := bridge.NewWorkspaceKnowledgeAdapter(workspaceService)
+	if err != nil {
+		return err
+	}
+	service.SetKnowledge(knowledgePort)
+	groundingPort, err := bridge.NewKnowledgeGroundingAdapter(knowledgePort)
+	if err != nil {
+		return err
+	}
+	service.SetKnowledgeGrounding(groundingPort)
 
 	// Wire governed Brain-to-Orchestra routing when both Brain and Orchestra are available.
 	// Brain remains advisory; Orchestra remains authoritative. Routing is skipped when
 	// either dependency is disabled so the bridge fails closed.
 	if brainPort != nil && orchestraPort != nil {
+		// Wire governed Brain-to-Orchestra routing with optional grounding
 		routingAdapter, err := bridge.NewBrainOrchestraRoutingAdapter(bridge.BrainOrchestraRoutingAdapterConfig{
 			Brain:     brainPort,
 			Orchestra: orchestraPort,
+			Grounding: groundingPort,
 			ProjectID: os.Getenv("CORTEXOS_ROUTING_PROJECT_ID"),
 		})
 		if err != nil {

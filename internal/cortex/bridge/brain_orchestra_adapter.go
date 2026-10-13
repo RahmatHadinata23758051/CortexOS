@@ -24,6 +24,7 @@ import (
 type BrainOrchestraRoutingAdapterConfig struct {
 	Brain     application.BrainPort
 	Orchestra application.OrchestraPort
+	Grounding application.KnowledgeGroundingPort
 	// ProjectID optionally pins routed task creation to a project; sanitized as opaque ID.
 	ProjectID string
 	// Now optionally injected; default time.Now.
@@ -34,6 +35,7 @@ type BrainOrchestraRoutingAdapterConfig struct {
 type BrainOrchestraRoutingAdapter struct {
 	brain     application.BrainPort
 	orchestra application.OrchestraPort
+	grounding application.KnowledgeGroundingPort
 	projectID string
 	now       func() time.Time
 	mu        sync.Mutex
@@ -54,6 +56,7 @@ func NewBrainOrchestraRoutingAdapter(cfg BrainOrchestraRoutingAdapterConfig) (ap
 	return &BrainOrchestraRoutingAdapter{
 		brain:     cfg.Brain,
 		orchestra: cfg.Orchestra,
+		grounding: cfg.Grounding,
 		projectID: cfg.ProjectID,
 		now:       now,
 		seen:      make(map[string]application.BrainOrchestraRouteResult),
@@ -81,7 +84,11 @@ func (a *BrainOrchestraRoutingAdapter) RouteBrainToOrchestra(ctx context.Context
 	a.mu.Unlock()
 
 	reqWithDefaults := req.WithDefaults()
-	plan, err := a.requestAdvisoryPlan(ctx, reqWithDefaults)
+	grounded, err := a.groundRoutingContext(ctx, reqWithDefaults)
+	if err != nil {
+		return application.BrainOrchestraRouteResult{CorrelationID: req.CorrelationID, Status: "rejected", SchemaVersion: application.BrainOrchestraBridgeSchemaVersion, SubmittedAt: a.now().UTC()}, err
+	}
+	plan, err := a.requestAdvisoryPlan(ctx, reqWithDefaults, grounded)
 	if err != nil {
 		return application.BrainOrchestraRouteResult{CorrelationID: req.CorrelationID, Status: "rejected", SchemaVersion: application.BrainOrchestraBridgeSchemaVersion, SubmittedAt: a.now().UTC()}, err
 	}
@@ -106,6 +113,7 @@ func (a *BrainOrchestraRoutingAdapter) RouteBrainToOrchestra(ctx context.Context
 				OrchestraTaskID: orchTaskID,
 				Status:          "accepted",
 				Message:         "duplicate correlation returned existing routing",
+				GroundedContext: grounded.Refs(),
 				SchemaVersion:   application.BrainOrchestraBridgeSchemaVersion,
 				SubmittedAt:     a.now().UTC(),
 			}
@@ -122,6 +130,7 @@ func (a *BrainOrchestraRoutingAdapter) RouteBrainToOrchestra(ctx context.Context
 		OrchestraTaskID: saved,
 		Status:          "accepted",
 		Message:         "routing accepted",
+		GroundedContext: grounded.Refs(),
 		SchemaVersion:   application.BrainOrchestraBridgeSchemaVersion,
 		SubmittedAt:     a.now().UTC(),
 	}
@@ -134,10 +143,10 @@ func (a *BrainOrchestraRoutingAdapter) RouteBrainToOrchestra(ctx context.Context
 // requestAdvisoryPlan dispatches a bounded planning request to Brain and folds
 // the sanitized output into the typed plan. It never forwards raw provider errors
 // or secrets; failures are mapped to invalid-routing results.
-func (a *BrainOrchestraRoutingAdapter) requestAdvisoryPlan(ctx context.Context, req application.BrainOrchestraRouteRequest) (application.BrainOrchestraPlan, error) {
+func (a *BrainOrchestraRoutingAdapter) requestAdvisoryPlan(ctx context.Context, req application.BrainOrchestraRouteRequest, grounded application.KnowledgeContextBundle) (application.BrainOrchestraPlan, error) {
 	dispatchReq := application.BrainDispatchRequest{
 		TaskID:        fmt.Sprintf("%s-plan", req.CorrelationID),
-		UserPrompt:    planPrompt(req),
+		UserPrompt:    planPrompt(req, grounded),
 		StaffID:       req.StaffID,
 		Config:        &application.SessionConfig{MaxTokens: req.MaxPlanTokens, StepLimit: req.MaxPlanSteps},
 		SchemaVersion: application.BrainBridgeContract,
@@ -171,8 +180,34 @@ func (a *BrainOrchestraRoutingAdapter) persistOrchestraTask(ctx context.Context,
 	return string(saved.ID), nil
 }
 
+func (a *BrainOrchestraRoutingAdapter) groundRoutingContext(ctx context.Context, req application.BrainOrchestraRouteRequest) (application.KnowledgeContextBundle, error) {
+	if a.grounding == nil {
+		return application.KnowledgeContextBundle{
+			Items:          []application.KnowledgeContextItem{},
+			Degraded:       true,
+			DegradedReason: "grounding_not_configured",
+			SchemaVersion:  application.KnowledgeContextSchemaVersion,
+		}, nil
+	}
+	budget := application.DefaultKnowledgeContextBudget()
+	if req.KnowledgeBudget != nil {
+		budget = *req.KnowledgeBudget
+	}
+	return a.grounding.GroundRoutingContext(ctx, application.KnowledgeContextRequest{
+		ProjectID: reqProjectID(a.projectID), Query: req.UserPrompt, Budget: budget,
+		SchemaVersion: application.KnowledgeContextSchemaVersion,
+	})
+}
+
+func reqProjectID(projectID string) string {
+	if strings.TrimSpace(projectID) == "" {
+		return "local"
+	}
+	return projectID
+}
+
 // planPrompt builds a deterministic advisory planning prompt with bounded size.
-func planPrompt(req application.BrainOrchestraRouteRequest) string {
+func planPrompt(req application.BrainOrchestraRouteRequest, grounded application.KnowledgeContextBundle) string {
 	var b strings.Builder
 	b.WriteString("Propose a bounded JSON plan for a multi-step task.\n")
 	b.WriteString("UserPrompt: ")
@@ -183,6 +218,7 @@ func planPrompt(req application.BrainOrchestraRouteRequest) string {
 	b.WriteString(strings.Join(req.AcceptanceCriteria, "; "))
 	b.WriteString("\nSteps: ")
 	fmt.Fprintf(&b, "%d", req.MaxPlanSteps)
+	b.WriteString(application.BuildGroundedContextPrompt(grounded))
 	return b.String()
 }
 

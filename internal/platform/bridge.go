@@ -93,6 +93,9 @@ func (b *Bridge) DispatchBrainTaskStream(request application.BrainDispatchReques
 func (b *Bridge) RouteBrainTaskToOrchestra(request application.BrainOrchestraRouteRequest) (application.BrainOrchestraRouteResult, error) {
 	result, err := b.service.RouteBrainTaskToOrchestra(b.getContext(), request)
 	if b.emitter != nil {
+		if len(result.GroundedContext) > 0 {
+			b.emitter.Emit(EventKnowledgeContextGrounded, result)
+		}
 		switch result.Status {
 		case "accepted":
 			b.emitter.Emit(EventBrainRouteAccepted, result)
@@ -285,6 +288,15 @@ func (b *Bridge) ListKnowledgeSources(request application.KnowledgeSourcesReques
 // QueryKnowledge exposes bounded, metadata-safe retrieval results.
 func (b *Bridge) QueryKnowledge(request application.KnowledgeQueryRequest) ([]application.KnowledgeQueryResult, error) {
 	return b.service.QueryKnowledge(b.getContext(), request)
+}
+
+// GroundRoutingContext exposes bounded, provenance-safe context for inspection.
+func (b *Bridge) GroundRoutingContext(request application.KnowledgeContextRequest) (application.KnowledgeContextBundle, error) {
+	bundle, err := b.service.GroundRoutingContext(b.getContext(), request)
+	if err == nil && b.emitter != nil {
+		b.emitter.Emit(EventKnowledgeContextGrounded, bundle)
+	}
+	return bundle, err
 }
 
 // GetCockpitRuntime exposes runtime status through a typed DTO.

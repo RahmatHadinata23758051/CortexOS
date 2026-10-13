@@ -21,10 +21,12 @@ export * from './cockpit'
 export * from './orchestra'
 export * from './coordination'
 export * from './knowledge'
+export * from './knowledge-context'
 export * from './harness'
 export * from './brain'
 import type { WorkspaceBridge } from './workspace'
 import type { KnowledgeBridge } from './knowledge'
+import type { KnowledgeContextBridge } from './knowledge-context'
 import type { HarnessBridge } from './harness'
 import type { OfficeBridge } from './office'
 import type { CockpitBridge } from './cockpit'
@@ -32,7 +34,7 @@ import type { OrchestraBridge } from './orchestra'
 import type { CoordinationBridge } from './coordination'
 import type { BrainBridge } from './brain'
 
-export type FullBridge = RuntimeBridge & WorkspaceBridge & OfficeBridge & CockpitBridge & OrchestraBridge & CoordinationBridge & KnowledgeBridge & HarnessBridge & BrainBridge
+export type FullBridge = RuntimeBridge & WorkspaceBridge & OfficeBridge & CockpitBridge & OrchestraBridge & CoordinationBridge & KnowledgeBridge & KnowledgeContextBridge & HarnessBridge & BrainBridge
 
 export type WailsWindow = Window & {
   go?: {
@@ -70,6 +72,7 @@ export const wailsRuntimeBridge: FullBridge = {
   MergeOrchestraTask: (request) => getWailsBridge().MergeOrchestraTask(request),
   ListKnowledgeSources: (request) => getWailsBridge().ListKnowledgeSources(request),
   QueryKnowledge: (request) => getWailsBridge().QueryKnowledge(request),
+  GroundRoutingContext: (request) => getWailsBridge().GroundRoutingContext(request),
   ListHarnessCapabilities: (request) => getWailsBridge().ListHarnessCapabilities(request),
   ListHarnessWorkers: (request) => getWailsBridge().ListHarnessWorkers(request),
   ListActiveHarnessExecutions: (request) => getWailsBridge().ListActiveHarnessExecutions(request),

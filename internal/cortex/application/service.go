@@ -38,6 +38,7 @@ type Service struct {
 	brainOrchestra BrainOrchestraPort
 	toolApproval   ToolApprovalPort
 	coordination   CoordinationPort
+	grounding      KnowledgeGroundingPort
 }
 
 // NewService creates the minimal Phase 1 application service.
@@ -238,4 +239,31 @@ func (s *Service) RouteBrainTaskToOrchestra(ctx context.Context, req BrainOrches
 		return BrainOrchestraRouteResult{}, errors.New("brain-orchestra routing not configured")
 	}
 	return s.brainOrchestra.RouteBrainToOrchestra(ctx, req)
+}
+
+// SetKnowledge attaches the safe Knowledge application port.
+func (s *Service) SetKnowledge(port KnowledgePort) {
+	if s != nil {
+		s.knowledge = port
+	}
+}
+
+// SetKnowledgeGrounding attaches the Knowledge retrieval grounding port.
+func (s *Service) SetKnowledgeGrounding(port KnowledgeGroundingPort) {
+	if s != nil {
+		s.grounding = port
+	}
+}
+
+// GroundRoutingContext generates bounded, metadata-safe retrieval context for routing.
+func (s *Service) GroundRoutingContext(ctx context.Context, req KnowledgeContextRequest) (KnowledgeContextBundle, error) {
+	if s == nil || s.grounding == nil {
+		return KnowledgeContextBundle{
+			Items:          []KnowledgeContextItem{},
+			Degraded:       true,
+			DegradedReason: "grounding_not_configured",
+			SchemaVersion:  KnowledgeContextSchemaVersion,
+		}, nil
+	}
+	return s.grounding.GroundRoutingContext(ctx, req)
 }
