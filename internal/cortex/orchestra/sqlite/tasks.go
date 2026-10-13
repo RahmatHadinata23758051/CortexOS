@@ -385,6 +385,153 @@ func (s *Store) SaveExecution(ctx context.Context, exec orchestra.Execution) err
 	return nil
 }
 
+// CommitMerge persists an entire merge decision atomically using a serializable transaction.
+// It enforces compare-and-set: the merged task must still be awaitingInspection and each
+// dependent task must still be Draft. On any failure the whole transaction rolls back.
+func (s *Store) CommitMerge(ctx context.Context, commit orchestra.MergeCommit) error {
+	if s == nil || s.db == nil {
+		return orchestra.ErrStoreUnavailable
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if err := commit.Validate(); err != nil {
+		return err
+	}
+
+	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelSerializable})
+	if err != nil {
+		return fmt.Errorf("begin atomic merge: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	// Verify merged task is still awaiting inspection
+	var currentStatus string
+	err = tx.QueryRowContext(ctx, `SELECT status FROM orchestra_tasks WHERE id = ?`, string(commit.MergedTask.ID)).Scan(&currentStatus)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return orchestra.ErrNotFound
+		}
+		return fmt.Errorf("load merged task for compare-and-set: %w", err)
+	}
+	if currentStatus != string(orchestra.TaskAwaitingInspection) {
+		return fmt.Errorf("%w: merged task %s is %s", orchestra.ErrMergeConflict, commit.MergedTask.ID, currentStatus)
+	}
+
+	// Update merged task to TaskSuccess
+	criteriaJSON, _ := json.Marshal(commit.MergedTask.AcceptanceCriteria)
+	depsJSON, _ := json.Marshal(commit.MergedTask.Dependencies)
+	_, err = tx.ExecContext(ctx, `UPDATE orchestra_tasks SET
+		status = ?, attempt_count = ?, max_attempts = ?, updated_at = ?,
+		title = ?, acceptance_criteria = ?, dependencies = ?, schema_version = ?
+		WHERE id = ?`,
+		string(commit.MergedTask.Status),
+		commit.MergedTask.AttemptCount,
+		commit.MergedTask.MaxAttempts,
+		commit.MergedTask.UpdatedAt.Format(time.RFC3339Nano),
+		commit.MergedTask.Title,
+		string(criteriaJSON),
+		string(depsJSON),
+		commit.MergedTask.SchemaVersion,
+		string(commit.MergedTask.ID),
+	)
+	if err != nil {
+		return fmt.Errorf("update merged task: %w", err)
+	}
+
+	// Insert accepted event with generated sequence
+	var maxSeq int64
+	_ = tx.QueryRowContext(ctx, `SELECT COALESCE(MAX(sequence), 0) FROM orchestra_events WHERE task_id = ?`, string(commit.MergedTask.ID)).Scan(&maxSeq)
+	acceptedEvent := commit.AcceptedEvent
+	acceptedEvent.Sequence = maxSeq + 1
+	if acceptedEvent.ID == "" {
+		acceptedEvent.ID = orchestra.EventID(fmt.Sprintf("%s-%d-%d", acceptedEvent.TaskID, time.Now().UnixNano(), acceptedEvent.Sequence))
+	}
+	evidenceJSON, _ := json.Marshal(acceptedEvent.EvidenceIDs)
+	_, err = tx.ExecContext(ctx, `INSERT INTO orchestra_events (
+		id, task_id, execution_id, sequence, type, from_status, to_status, message, evidence_ids, occurred_at
+	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		string(acceptedEvent.ID),
+		string(acceptedEvent.TaskID),
+		nullableString(string(acceptedEvent.ExecutionID)),
+		acceptedEvent.Sequence,
+		string(acceptedEvent.Type),
+		string(acceptedEvent.From),
+		string(acceptedEvent.To),
+		acceptedEvent.Message,
+		string(evidenceJSON),
+		acceptedEvent.OccurredAt.Format(time.RFC3339Nano),
+	)
+	if err != nil {
+		return fmt.Errorf("insert accepted event: %w", err)
+	}
+
+	// For each unblocked task: verify still Draft, update to Ready, insert validated event
+	for i, task := range commit.UnblockedTasks {
+		var depStatus string
+		err = tx.QueryRowContext(ctx, `SELECT status FROM orchestra_tasks WHERE id = ?`, string(task.ID)).Scan(&depStatus)
+		if err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return orchestra.ErrNotFound
+			}
+			return fmt.Errorf("load dependent task %s for compare-and-set: %w", task.ID, err)
+		}
+		if depStatus != string(orchestra.TaskDraft) {
+			return fmt.Errorf("%w: dependent task %s is %s", orchestra.ErrMergeConflict, task.ID, depStatus)
+		}
+
+		criteriaJSON, _ = json.Marshal(task.AcceptanceCriteria)
+		depsJSON, _ = json.Marshal(task.Dependencies)
+		_, err = tx.ExecContext(ctx, `UPDATE orchestra_tasks SET
+			status = ?, attempt_count = ?, max_attempts = ?, updated_at = ?,
+			title = ?, acceptance_criteria = ?, dependencies = ?, schema_version = ?
+			WHERE id = ?`,
+			string(task.Status),
+			task.AttemptCount,
+			task.MaxAttempts,
+			task.UpdatedAt.Format(time.RFC3339Nano),
+			task.Title,
+			string(criteriaJSON),
+			string(depsJSON),
+			task.SchemaVersion,
+			string(task.ID),
+		)
+		if err != nil {
+			return fmt.Errorf("update dependent task %s: %w", task.ID, err)
+		}
+
+		validatedEvent := commit.ValidatedEvents[i]
+		_ = tx.QueryRowContext(ctx, `SELECT COALESCE(MAX(sequence), 0) FROM orchestra_events WHERE task_id = ?`, string(task.ID)).Scan(&maxSeq)
+		validatedEvent.Sequence = maxSeq + 1
+		if validatedEvent.ID == "" {
+			validatedEvent.ID = orchestra.EventID(fmt.Sprintf("%s-%d-%d", validatedEvent.TaskID, time.Now().UnixNano(), validatedEvent.Sequence))
+		}
+		evidenceJSON, _ = json.Marshal(validatedEvent.EvidenceIDs)
+		_, err = tx.ExecContext(ctx, `INSERT INTO orchestra_events (
+			id, task_id, execution_id, sequence, type, from_status, to_status, message, evidence_ids, occurred_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			string(validatedEvent.ID),
+			string(validatedEvent.TaskID),
+			nullableString(string(validatedEvent.ExecutionID)),
+			validatedEvent.Sequence,
+			string(validatedEvent.Type),
+			string(validatedEvent.From),
+			string(validatedEvent.To),
+			validatedEvent.Message,
+			string(evidenceJSON),
+			validatedEvent.OccurredAt.Format(time.RFC3339Nano),
+		)
+		if err != nil {
+			return fmt.Errorf("insert validated event for %s: %w", task.ID, err)
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit atomic merge: %w", err)
+	}
+	return nil
+}
+
 func (s *Store) GetExecution(ctx context.Context, id orchestra.ExecutionID) (orchestra.Execution, error) {
 	if s == nil || s.db == nil {
 		return orchestra.Execution{}, orchestra.ErrStoreUnavailable
