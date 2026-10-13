@@ -13,6 +13,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strconv"
@@ -625,6 +626,142 @@ func TestBAN146_CrashRecovery_AbruptKillMidTransaction(t *testing.T) {
 	}
 
 	t.Logf("BAN-146 crash recovery passed: partial transaction rolled back, integrity OK, 0 orphaned state")
+}
+
+// TestBAN146_CrashRecovery_RealSubprocessKill is the end-to-end OS-level companion
+// test for crash recovery. It uses Go's exec.Command to invoke the current test
+// binary in helper-process mode (GO_WANT_CRASH_HELPER=1). The child process
+// connects to the SQLite database, locks a row, updates parent to TaskSuccess,
+// and signals readiness. The parent then abruptly issues cmd.Process.Kill()
+// (SIGKILL on POSIX, TerminateProcess on Windows) and asserts that:
+// 1. The killed child left 0 phantom commits.
+// 2. PRAGMA integrity_check passes on reopen.
+// 3. Parent task is intact in TaskAwaitingInspection.
+func TestBAN146_CrashRecovery_RealSubprocessKill(t *testing.T) {
+	if os.Getenv("GO_WANT_CRASH_HELPER") == "1" {
+		runCrashHelperProcess()
+		return
+	}
+
+	ctx := context.Background()
+	dir := t.TempDir()
+	dbPath := filepath.Join(dir, "subprocess_crash.db")
+
+	// Phase 1: Parent creates initial database and task
+	store, err := orchestrasqlite.Open(ctx, dbPath)
+	if err != nil {
+		t.Fatalf("open store: %v", err)
+	}
+
+	const taskID = orchestra.TaskID("task-subprocess-victim")
+	initTask := orchestra.Task{
+		ID:                 taskID,
+		ProjectID:          "p-kill",
+		WorktreeID:         "wt-kill",
+		Title:              "Subprocess Kill Victim",
+		AcceptanceCriteria: []string{"survives SIGKILL"},
+		Status:             orchestra.TaskAwaitingInspection,
+		AttemptCount:       1,
+		MaxAttempts:        3,
+		CreatedAt:          time.Now().UTC(),
+		UpdatedAt:          time.Now().UTC(),
+		SchemaVersion:      orchestra.ContractVersion,
+	}
+	if err := store.SaveTask(ctx, initTask); err != nil {
+		t.Fatalf("save initial task: %v", err)
+	}
+	// Close store so child process can obtain exclusive access on Windows
+	if err := store.Close(); err != nil {
+		t.Fatalf("close store before child: %v", err)
+	}
+
+	readyFile := filepath.Join(dir, "child_ready.signal")
+
+	// Phase 2: Spawn helper child process
+	cmd := exec.Command(os.Args[0], "-test.run=TestBAN146_CrashRecovery_RealSubprocessKill")
+	cmd.Env = append(os.Environ(),
+		"GO_WANT_CRASH_HELPER=1",
+		"CRASH_DB_PATH="+dbPath,
+		"CRASH_READY_FILE="+readyFile,
+	)
+	if err := cmd.Start(); err != nil {
+		t.Fatalf("start helper subprocess: %v", err)
+	}
+
+	// Wait up to 5 seconds for child to create the ready signal
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		if _, err := os.Stat(readyFile); err == nil {
+			break
+		}
+		if time.Now().After(deadline) {
+			_ = cmd.Process.Kill()
+			t.Fatal("child helper process timed out before signaling readiness")
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+
+	// Phase 3: ABRUPT TERMINATION (Kill without warning mid-transaction)
+	if err := cmd.Process.Kill(); err != nil {
+		t.Fatalf("kill child process: %v", err)
+	}
+	_ = cmd.Wait() // Reaps the zombie/zombie handle
+
+	// Phase 4: Parent reopens database and verifies state
+	reopened, err := orchestrasqlite.Open(ctx, dbPath)
+	if err != nil {
+		t.Fatalf("reopen store after subprocess kill: %v", err)
+	}
+	defer reopened.Close()
+
+	if err := reopened.CheckIntegrity(ctx); err != nil {
+		t.Fatalf("database integrity check failed after subprocess kill: %v", err)
+	}
+
+	taskAfterKill, err := reopened.GetTask(ctx, taskID)
+	if err != nil {
+		t.Fatalf("read task after kill: %v", err)
+	}
+	if taskAfterKill.Status != orchestra.TaskAwaitingInspection {
+		t.Fatalf("task status after subprocess kill = %q, want %q (phantom commit leaked!)", taskAfterKill.Status, orchestra.TaskAwaitingInspection)
+	}
+
+	t.Logf("BAN-146 real subprocess kill passed: process terminated mid-tx, 0 phantom mutations, integrity OK")
+}
+
+// runCrashHelperProcess is executed inside the killed subprocess.
+func runCrashHelperProcess() {
+	dbPath := os.Getenv("CRASH_DB_PATH")
+	readyFile := os.Getenv("CRASH_READY_FILE")
+	if dbPath == "" || readyFile == "" {
+		os.Exit(2)
+	}
+
+	ctx := context.Background()
+	rawDB, err := orchestrasqlite.OpenRawForCrashSimulation(ctx, dbPath)
+	if err != nil {
+		os.Exit(3)
+	}
+
+	tx, err := rawDB.BeginTx(ctx, nil)
+	if err != nil {
+		os.Exit(4)
+	}
+
+	// Mutate task to TaskSuccess inside uncommitted transaction
+	_, err = tx.ExecContext(ctx, `UPDATE orchestra_tasks SET status = 'success' WHERE id = 'task-subprocess-victim'`)
+	if err != nil {
+		os.Exit(5)
+	}
+
+	// Signal readiness to parent that mutation has happened and tx is open
+	if err := os.WriteFile(readyFile, []byte("ready"), 0600); err != nil {
+		os.Exit(6)
+	}
+
+	// Sleep indefinitely waiting to be abruptly killed by parent
+	time.Sleep(30 * time.Second)
+	os.Exit(0)
 }
 
 // TestP10Stress_SQLiteReopenDurability commits merges, closes the store, reopens

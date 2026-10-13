@@ -73,18 +73,19 @@ Command: `go test -run TestBAN146 ./internal/cortex/orchestra -v -count=1`
 
 ---
 
-## 5. Remaining Gap — Real Subprocess Kill
+## 5. Real Subprocess Kill Evidence
 
-The current test simulates a crash by rolling back an explicit transaction on a second connection, then closing all handles. A **true end-to-end kill test** would:
+The end-to-end companion test `TestBAN146_CrashRecovery_RealSubprocessKill` now launches the current test binary as a helper process, waits until it has opened an uncommitted transaction and updated the task, then calls `cmd.Process.Kill()` (TerminateProcess on Windows, SIGKILL-equivalent process termination on POSIX).
 
-1. Launch a child process (`go run` / test binary) that performs `CommitMerge`.
-2. Parent kills child via `Process.Kill()` at a precise moment (using a sync barrier).
-3. Parent reopens DB and verifies the same invariants.
+```text
+=== RUN   TestBAN146_CrashRecovery_RealSubprocessKill
+    p10_stress_test.go:729: BAN-146 real subprocess kill passed: process terminated mid-tx, 0 phantom mutations, integrity OK
+--- PASS: TestBAN146_CrashRecovery_RealSubprocessKill
+```
 
-This is tracked as **BAN-146 follow-up** (optional hardening) because:
-- SQLite's auto-rollback on connection loss is well-specified and the in-process simulation covers the storage-layer semantics.
-- Windows `Process.Kill()` behaves differently from POSIX `SIGKILL` (no signals), and CI runners may not allow reliable process creation/kill in sandbox.
-- The critical guarantee — *no torn writes, no phantom state* — is already proven by the test above.
+The parent reopens the database after the child is killed and verifies `PRAGMA integrity_check == ok` plus the original `TaskAwaitingInspection` state. This closes the previous in-process-only testing gap.
+
+The lower-level in-process test remains useful because it separately verifies `RecoverInterrupted` promotion of a crashed active worker to retryable `TaskReady`.
 
 ---
 
