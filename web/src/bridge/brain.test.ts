@@ -43,16 +43,10 @@ const mockRuntime = {
   EventsOff: vi.fn(),
 }
 
-declare global {
-  interface Window {
-    runtime?: typeof mockRuntime
-  }
-}
-
 beforeEach(() => {
   vi.clearAllMocks()
   if (typeof window !== 'undefined') {
-    window.runtime = mockRuntime
+    (window as unknown as { runtime?: typeof mockRuntime }).runtime = mockRuntime
   }
 })
 
