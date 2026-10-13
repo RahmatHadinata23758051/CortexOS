@@ -13,6 +13,7 @@ import (
 	harnesssqlite "github.com/RahmatHadinata23758051/CortexOS/internal/cortex/harness/sqlite"
 	"github.com/RahmatHadinata23758051/CortexOS/internal/cortex/orchestra"
 	orchestrasqlite "github.com/RahmatHadinata23758051/CortexOS/internal/cortex/orchestra/sqlite"
+	"github.com/RahmatHadinata23758051/CortexOS/internal/cortex/provider"
 	"github.com/RahmatHadinata23758051/CortexOS/internal/cortex/workspace"
 	workspacegit "github.com/RahmatHadinata23758051/CortexOS/internal/cortex/workspace/git"
 	"github.com/RahmatHadinata23758051/CortexOS/internal/cortex/workspace/retrieval"
@@ -184,7 +185,13 @@ func Run() error {
 	}
 	defer func() { _ = closeOrchestra() }()
 
-	service := application.NewServiceWithWorkspaceAndOrchestra(workspaceService, orchestraPort)
+	providerPort, closeProvider, err := OpenProvider(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = closeProvider() }()
+
+	service := application.NewServiceWithWorkspaceAndOrchestraAndProvider(workspaceService, orchestraPort, providerPort)
 	app := platform.New()
 	bridge := platform.NewBridge(service)
 	app.OnStartup(bridge.SetRuntimeContext)
@@ -231,4 +238,67 @@ func smokeQuitDelay(raw string) (time.Duration, bool) {
 		return 0, false
 	}
 	return time.Duration(ms) * time.Millisecond, true
+}
+
+// ProviderConfig holds resolved provider configuration from environment.
+type ProviderConfig struct {
+	Enabled    bool
+	BaseURL    string
+	Model      string
+	APIKey     string
+	TimeoutSec int
+}
+
+// OpenProvider reads provider configuration from environment and returns a ProviderPort.
+// Returns (nil, nil) if provider is disabled or not configured. Returns error if configuration
+// is invalid but provider is explicitly enabled (fail-closed behavior).
+func OpenProvider(ctx context.Context) (application.ProviderPort, func() error, error) {
+	if ctx == nil {
+		return nil, nil, fmt.Errorf("context is required")
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, nil, err
+	}
+
+	// Default: provider disabled unless explicitly enabled
+	enabled := os.Getenv("CORTEXOS_PROVIDER_DEFAULT")
+	if enabled == "" {
+		enabled = "disabled"
+	}
+
+	if enabled == "disabled" || enabled == "false" || enabled == "0" {
+		return nil, func() error { return nil }, nil
+	}
+
+	// Parse configuration
+	baseURL := os.Getenv("CORTEXOS_PROVIDER_BASE_URL")
+	if baseURL == "" {
+		return nil, nil, fmt.Errorf("CORTEXOS_PROVIDER_BASE_URL is required when provider is enabled")
+	}
+
+	model := os.Getenv("CORTEXOS_PROVIDER_MODEL")
+	if model == "" {
+		return nil, nil, fmt.Errorf("CORTEXOS_PROVIDER_MODEL is required when provider is enabled")
+	}
+
+	apiKey := os.Getenv("CORTEXOS_PROVIDER_API_KEY") // May be empty for local endpoints
+
+	timeoutStr := os.Getenv("CORTEXOS_PROVIDER_TIMEOUT_SEC")
+	timeoutSec := 60
+	if timeoutStr != "" {
+		if t, err := strconv.Atoi(timeoutStr); err == nil && t > 0 {
+			timeoutSec = t
+		}
+	}
+
+	// Create the provider
+	p, err := provider.NewOpenAICompatible(baseURL, model, apiKey, timeoutSec, nil)
+	if err != nil {
+		return nil, nil, fmt.Errorf("create provider: %w", err)
+	}
+
+	// Wrap in application adapter
+	adapter := application.NewProviderAdapter(p)
+
+	return adapter, func() error { return p.Close() }, nil
 }

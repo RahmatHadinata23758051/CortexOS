@@ -4,7 +4,18 @@
 
 environment: local
 log_level: info
+# Set these only in a local environment; credentials stay in process env/keychain.
 provider_default: disabled
+provider_base_url: http://localhost:20128/v1
+provider_model: OMP
+provider_timeout_sec: 60
 provider_key_ref: null
 user_key_ref: null
+
+# Equivalent runtime environment variables:
+# CORTEXOS_PROVIDER_DEFAULT=9router
+# CORTEXOS_PROVIDER_BASE_URL=http://localhost:20128/v1
+# CORTEXOS_PROVIDER_MODEL=OMP
+# CORTEXOS_PROVIDER_TIMEOUT_SEC=60
+# CORTEXOS_PROVIDER_API_KEY=<injected at runtime; never commit>
 linear_mcp_enabled: false

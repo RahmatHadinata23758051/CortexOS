@@ -33,6 +33,7 @@ type Service struct {
 	staff     StaffPort
 	knowledge KnowledgePort
 	cockpit   CockpitPort
+	provider  ProviderPort
 }
 
 // NewService creates the minimal Phase 1 application service.
@@ -81,6 +82,16 @@ func NewServiceWithCockpit(cockpitService CockpitPort) *Service {
 	return &Service{cockpit: cockpitService}
 }
 
+// NewServiceWithProvider adds the optional Provider application boundary.
+func NewServiceWithProvider(providerService ProviderPort) *Service {
+	return &Service{provider: providerService}
+}
+
+// NewServiceWithWorkspaceAndOrchestraAndProvider adds Workspace, Orchestra, and Provider boundaries.
+func NewServiceWithWorkspaceAndOrchestraAndProvider(workspaceService *workspace.Service, orchestraService OrchestraPort, providerService ProviderPort) *Service {
+	return &Service{workspace: workspaceService, orchestra: orchestraService, provider: providerService}
+}
+
 // NewServiceWithFull combines all available application boundaries.
 func NewServiceWithFull(workspaceService *workspace.Service, orchestraService OrchestraPort, harnessService HarnessPort, staffService StaffPort, knowledgeService KnowledgePort) *Service {
 	return &Service{workspace: workspaceService, orchestra: orchestraService, harness: harnessService, staff: staffService, knowledge: knowledgeService}
@@ -95,11 +106,16 @@ func (s *Service) GetRuntimeSnapshot(ctx context.Context, request SnapshotReques
 		return RuntimeSnapshot{}, fmt.Errorf("%w: schema version %q is not supported", ErrInvalidRequest, request.SchemaVersion)
 	}
 
+	providerStatus := "disabled"
+	if s != nil && s.provider != nil {
+		providerStatus = "configured"
+	}
+
 	return RuntimeSnapshot{
 		SchemaVersion: runtimeSchemaVersion,
 		Status:        "ready",
 		Environment:   "local",
-		Provider:      "disabled",
+		Provider:      providerStatus,
 	}, nil
 }
 
