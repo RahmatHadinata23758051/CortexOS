@@ -5,6 +5,7 @@ import { type CoordinationSnapshot, type StaffAssignmentStatus } from '../types/
 import { loadOfficeSnapshot, createOfficeEventSource, staffById, type OfficeState } from '../bridge/office'
 import { loadCoordinationSnapshot, onCoordinationChanged } from '../bridge/coordination'
 import { CoordinationPanel } from './CoordinationPanel'
+import { OrchestrationGraph } from './OrchestrationGraph'
 import { wailsRuntimeBridge } from '../types'
 
 interface OfficeSceneHandle {
@@ -169,6 +170,7 @@ function OfficeCanvas({ staff, onSelect, brainState, coordination }: { staff: re
 }
 
 export function OfficeView({ className = '' }: OfficeViewProps): ReactNode {
+  const [viewMode, setViewMode] = useState<'graph' | 'office'>('graph')
   const [officeState, setOfficeState] = useState<OfficeState>({ status: 'loading' })
   const [selectedStaffId, setSelectedStaffId] = useState<string | undefined>()
   const [activityEvents, setActivityEvents] = useState<readonly OfficeActivityEvent[]>([])
@@ -232,22 +234,37 @@ export function OfficeView({ className = '' }: OfficeViewProps): ReactNode {
   return (
     <div className={`office-view ${className}`}>
       <ReadOnlyBanner />
-      <div className="office-grid">
-        <main className="office-main">
-          <OfficeCanvas
-            staff={staff}
-            onSelect={handleStaffSelect}
-            brainState={brainStateForPhaser}
-            coordination={coordination.status === 'success' ? coordination.snapshot.assignments : undefined}
-          />
-        </main>
-        <div className="office-side">
-          {coordination.status === 'success' && <CoordinationPanel snapshot={coordination.snapshot} />}
-          <StaffDirectory staff={staff} selectedId={selectedStaffId} onSelect={handleStaffSelect} />
-          <ZoneLegend />
-          <ActivityFeed events={activityEvents} />
-        </div>
+      <div className="office-mode-switcher" role="tablist" aria-label="Office presentation mode">
+        <button type="button" className={viewMode === 'graph' ? 'active' : ''} onClick={() => setViewMode('graph')} role="tab" aria-selected={viewMode === 'graph'}>
+          <span aria-hidden="true">⌘</span> Orchestration graph
+        </button>
+        <button type="button" className={viewMode === 'office' ? 'active' : ''} onClick={() => setViewMode('office')} role="tab" aria-selected={viewMode === 'office'}>
+          <span aria-hidden="true">□</span> Virtual office
+        </button>
       </div>
+      {coordination.status === 'success' && viewMode === 'graph' ? (
+        <OrchestrationGraph
+          snapshot={coordination.snapshot}
+          onSelectStaff={handleStaffSelect}
+        />
+      ) : (
+        <div className="office-grid">
+          <main className="office-main">
+            <OfficeCanvas
+              staff={staff}
+              onSelect={handleStaffSelect}
+              brainState={brainStateForPhaser}
+              coordination={coordination.status === 'success' ? coordination.snapshot.assignments : undefined}
+            />
+          </main>
+          <div className="office-side">
+            {coordination.status === 'success' && <CoordinationPanel snapshot={coordination.snapshot} />}
+            <StaffDirectory staff={staff} selectedId={selectedStaffId} onSelect={handleStaffSelect} />
+            <ZoneLegend />
+            <ActivityFeed events={activityEvents} />
+          </div>
+        </div>
+      )}
       <TerminalOverlay
         state={terminalState}
         onClose={closeTerminal}
