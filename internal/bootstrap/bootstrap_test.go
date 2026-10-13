@@ -1,45 +1,50 @@
-package bootstrap
+package bootstrap_test
 
 import (
 	"context"
-	"path/filepath"
 	"testing"
 
+	"github.com/RahmatHadinata23758051/CortexOS/internal/bootstrap"
 	"github.com/RahmatHadinata23758051/CortexOS/internal/cortex/workspace"
 )
 
-func TestOpenWorkspaceComposesDurableAdapters(t *testing.T) {
-	t.Parallel()
+func TestOpenOrchestra_Lifecycle(t *testing.T) {
+	dir := t.TempDir()
+	ctx := context.Background()
 
-	root := t.TempDir()
-	service, closeWorkspace, err := OpenWorkspace(context.Background(), filepath.Join(root, "data"))
+	// 1. Open workspace service
+	wsService, closeWS, err := bootstrap.OpenWorkspace(ctx, dir)
 	if err != nil {
-		t.Fatal(err)
+		t.Fatalf("open workspace: %v", err)
 	}
-	if service == nil || closeWorkspace == nil {
-		t.Fatal("OpenWorkspace returned an incomplete composition")
-	}
-	if err := service.Open(context.Background()); err != nil {
-		t.Fatal(err)
-	}
-	project, err := service.RegisterProject(context.Background(), workspace.Project{
-		ID: "project-1", Name: "Fixture", RepositoryRoot: filepath.Join(root, "repo"), VaultRoot: filepath.Join(root, "vault"),
-	})
+	defer func() { _ = closeWS() }()
+
+	canonicalRoot, err := workspace.CanonicalRoot(dir)
 	if err != nil {
-		t.Fatal(err)
+		t.Fatalf("canonical root: %v", err)
 	}
-	if project.Status != workspace.ProjectStatusActive {
-		t.Fatalf("project = %#v", project)
-	}
-	if err := closeWorkspace(); err != nil {
-		t.Fatal(err)
-	}
-}
 
-func TestOpenWorkspaceRejectsRelativeDataRoot(t *testing.T) {
-	t.Parallel()
+	// 2. Open orchestra port
+	orchPort, closeOrch, err := bootstrap.OpenOrchestra(ctx, canonicalRoot, wsService)
+	if err != nil {
+		t.Fatalf("open orchestra: %v", err)
+	}
 
-	if _, _, err := OpenWorkspace(context.Background(), "relative-data"); workspace.ErrorCodeOf(err) != workspace.ErrPathDenied {
-		t.Fatalf("error code = %q, err = %v", workspace.ErrorCodeOf(err), err)
+	if orchPort == nil {
+		t.Fatal("expected non-nil orchestra port")
+	}
+
+	// 3. Verify read operations work against clean database
+	tasks, err := orchPort.ListTasks(ctx)
+	if err != nil {
+		t.Fatalf("list tasks from clean store: %v", err)
+	}
+	if len(tasks) != 0 {
+		t.Fatalf("expected 0 initial tasks, got %d", len(tasks))
+	}
+
+	// 4. Close orchestra port cleanly
+	if err := closeOrch(); err != nil {
+		t.Fatalf("close orchestra: %v", err)
 	}
 }

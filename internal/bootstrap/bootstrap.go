@@ -7,6 +7,9 @@ import (
 	"path/filepath"
 
 	"github.com/RahmatHadinata23758051/CortexOS/internal/cortex/application"
+	harnesssqlite "github.com/RahmatHadinata23758051/CortexOS/internal/cortex/harness/sqlite"
+	"github.com/RahmatHadinata23758051/CortexOS/internal/cortex/orchestra"
+	orchestrasqlite "github.com/RahmatHadinata23758051/CortexOS/internal/cortex/orchestra/sqlite"
 	"github.com/RahmatHadinata23758051/CortexOS/internal/cortex/workspace"
 	workspacegit "github.com/RahmatHadinata23758051/CortexOS/internal/cortex/workspace/git"
 	"github.com/RahmatHadinata23758051/CortexOS/internal/cortex/workspace/retrieval"
@@ -69,6 +72,79 @@ func OpenWorkspace(ctx context.Context, dataRoot string) (*workspace.Service, fu
 	return service, closeState, nil
 }
 
+// OpenOrchestra composes the production Orchestra adapter over durable SQLite state,
+// Harness audit evidence, and Workspace worktree cleanliness verification. The adapter
+// owns merge authority gating (ADR-0005) and task-plan persistence. The returned close
+// function owns the Orchestra and Harness SQLite lifecycles.
+func OpenOrchestra(ctx context.Context, canonicalRoot string, workspaceService *workspace.Service) (application.OrchestraPort, func() error, error) {
+	if ctx == nil {
+		return nil, nil, orchestra.ErrInvalidTask
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, nil, err
+	}
+	if canonicalRoot == "" {
+		return nil, nil, workspace.NewError(workspace.ErrInvalidRequest, "canonical root is required")
+	}
+	orchStore, err := orchestrasqlite.Open(ctx, filepath.Join(canonicalRoot, "state", "orchestra.db"))
+	if err != nil {
+		return nil, nil, err
+	}
+
+	harnessStore, err := harnesssqlite.Open(ctx, filepath.Join(canonicalRoot, "state", "harness.db"))
+	if err != nil {
+		_ = orchStore.Close()
+		return nil, nil, err
+	}
+	closeAll := func() error {
+		var firstErr, secondErr error
+		if orchStore != nil {
+			firstErr = orchStore.Close()
+		}
+		if harnessStore != nil {
+			secondErr = harnessStore.Close()
+		}
+		if firstErr != nil {
+			return firstErr
+		}
+		return secondErr
+	}
+
+	adapter, err := orchestra.NewProductionAdapter(orchestra.ProductionAdapterConfig{
+		TaskStore:         orchStore,
+		HarnessStore:      harnessStore,
+		WorktreeInspector: &workspaceWorktreeInspector{workspace: workspaceService},
+		Inspector:         orchestra.MergeAuthority{Capability: orchestra.MergeCapability},
+	})
+	if err != nil {
+		_ = closeAll()
+		return nil, nil, err
+	}
+	return adapter, closeAll, nil
+}
+
+// workspaceWorktreeInspector adapts workspace.Service worktree inspection to the
+// orchestra.WorktreeInspector contract without creating a package import cycle.
+type workspaceWorktreeInspector struct {
+	workspace *workspace.Service
+}
+
+func (w *workspaceWorktreeInspector) InspectWorktreeState(ctx context.Context, worktreeID string) (orchestra.WorktreeState, error) {
+	if w == nil || w.workspace == nil {
+		return orchestra.WorktreeState{WorktreeID: worktreeID, Valid: false}, nil
+	}
+	wt, err := w.workspace.InspectWorktree(ctx, workspace.WorktreeID(worktreeID))
+	if err != nil {
+		return orchestra.WorktreeState{WorktreeID: worktreeID, Valid: false}, nil
+	}
+	return orchestra.WorktreeState{
+		WorktreeID: string(wt.ID),
+		Revision:   wt.Revision,
+		Dirty:      wt.Dirty,
+		Valid:      wt.Status == workspace.WorktreeStatusActive,
+	}, nil
+}
+
 func defaultWorkspaceDataRoot() (string, error) {
 	configDir, err := os.UserConfigDir()
 	if err != nil {
@@ -83,13 +159,24 @@ func Run() error {
 	if err != nil {
 		return err
 	}
-	workspaceService, closeWorkspace, err := OpenWorkspace(context.Background(), dataRoot)
+	ctx := context.Background()
+	workspaceService, closeWorkspace, err := OpenWorkspace(ctx, dataRoot)
 	if err != nil {
 		return err
 	}
 	defer func() { _ = closeWorkspace() }()
 
-	service := application.NewServiceWithWorkspace(workspaceService)
+	canonicalRoot, err := workspace.CanonicalRoot(dataRoot)
+	if err != nil {
+		return err
+	}
+	orchestraPort, closeOrchestra, err := OpenOrchestra(ctx, canonicalRoot, workspaceService)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = closeOrchestra() }()
+
+	service := application.NewServiceWithWorkspaceAndOrchestra(workspaceService, orchestraPort)
 	app := platform.New()
 	bridge := platform.NewBridge(service)
 	app.OnStartup(bridge.SetRuntimeContext)
