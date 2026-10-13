@@ -42,6 +42,12 @@ func NewProductionAdapter(config ProductionAdapterConfig) (*ProductionAdapter, e
 	if config.TaskStore == nil {
 		return nil, errors.New("task store is required")
 	}
+	if config.HarnessStore == nil {
+		return nil, errors.New("harness evidence store is required")
+	}
+	if config.WorktreeInspector == nil {
+		return nil, errors.New("worktree inspector is required")
+	}
 	if config.Inspector == nil {
 		config.Inspector = MergeAuthority{Capability: MergeCapability}
 	}
@@ -156,27 +162,24 @@ func (a *ProductionAdapter) MergeTask(ctx context.Context, id TaskID, note strin
 		return Task{}, fmt.Errorf("%w: task status is %s, expected %s", ErrInspectionRejected, task.Status, TaskAwaitingInspection)
 	}
 
-	// 1. Resolve worktree state
+	// 1. Resolve worktree state (strictly required)
 	var wtState WorktreeState
-	if a.worktrees != nil && task.WorktreeID != "" {
-		state, wtErr := a.worktrees.InspectWorktreeState(ctx, task.WorktreeID)
-		if wtErr != nil {
-			return Task{}, fmt.Errorf("%w: inspect worktree: %w", ErrInvalidWorktree, wtErr)
-		}
-		wtState = state
-	} else {
-		// Default to valid for mock/standalone environments without separate git repo
-		wtState = WorktreeState{
-			WorktreeID: task.WorktreeID,
-			Valid:      true,
-			Dirty:      false,
-		}
+	if task.WorktreeID == "" {
+		return Task{}, fmt.Errorf("%w: task worktree id is missing", ErrInvalidWorktree)
 	}
+	state, wtErr := a.worktrees.InspectWorktreeState(ctx, task.WorktreeID)
+	if wtErr != nil {
+		return Task{}, fmt.Errorf("%w: inspect worktree: %w", ErrInvalidWorktree, wtErr)
+	}
+	wtState = state
 
 	// 2. Resolve execution and evidence
 	exec, evidenceList, err := a.resolveExecutionAndEvidence(ctx, task)
 	if err != nil {
 		return Task{}, err
+	}
+	if exec.ID == "" {
+		return Task{}, fmt.Errorf("%w: execution record not found for merge", ErrInspectionRejected)
 	}
 
 	// 3. Invoke Inspector (fail-closed if authority or evidence rejected)
@@ -222,7 +225,7 @@ func (a *ProductionAdapter) MergeTask(ctx context.Context, id TaskID, note strin
 	for _, ev := range evidenceList {
 		evidenceIDs = append(evidenceIDs, ev.ID)
 	}
-	_ = a.tasks.AppendEvent(ctx, TaskEvent{
+	if err := a.tasks.AppendEvent(ctx, TaskEvent{
 		TaskID:      id,
 		ExecutionID: exec.ID,
 		Type:        EventInspectionAccepted,
@@ -231,11 +234,12 @@ func (a *ProductionAdapter) MergeTask(ctx context.Context, id TaskID, note strin
 		Message:     evMsg,
 		EvidenceIDs: evidenceIDs,
 		OccurredAt:  time.Now().UTC(),
-	})
+	}); err != nil {
+		return Task{}, fmt.Errorf("append inspection accepted event: %w", err)
+	}
 
 	// 6. Update plan graph: unblock dependent tasks
 	if err := a.updatePlanGraph(ctx, task.ProjectID); err != nil {
-		// Log or return error if plan update fails
 		return successTask, fmt.Errorf("update plan graph after merge: %w", err)
 	}
 
@@ -243,56 +247,75 @@ func (a *ProductionAdapter) MergeTask(ctx context.Context, id TaskID, note strin
 }
 
 func (a *ProductionAdapter) resolveExecutionAndEvidence(ctx context.Context, task Task) (Execution, []InspectionEvidence, error) {
-	// Try to find the latest execution from execution records or timeline
-	execID := ExecutionID(fmt.Sprintf("%s-exec-%d", task.ID, task.AttemptCount))
-	exec, err := a.tasks.GetExecution(ctx, execID)
-	if err != nil {
-		// Fallback to checking events for execution ID
+	// Standard dispatcher convention is "{taskID}-{attemptCount}"
+	candidateIDs := []ExecutionID{
+		ExecutionID(fmt.Sprintf("%s-%d", task.ID, task.AttemptCount)),
+		ExecutionID(fmt.Sprintf("%s-exec-%d", task.ID, task.AttemptCount)),
+	}
+
+	var exec Execution
+	var found bool
+	for _, cid := range candidateIDs {
+		if e, err := a.tasks.GetExecution(ctx, cid); err == nil {
+			exec = e
+			found = true
+			break
+		}
+	}
+
+	if !found {
+		// Fallback to searching events timeline for recorded execution ID
 		events, _ := a.tasks.ListEvents(ctx, task.ID)
 		for i := len(events) - 1; i >= 0; i-- {
 			if events[i].ExecutionID != "" {
-				execID = events[i].ExecutionID
-				exec, err = a.tasks.GetExecution(ctx, execID)
-				break
+				if e, err := a.tasks.GetExecution(ctx, events[i].ExecutionID); err == nil {
+					exec = e
+					found = true
+					break
+				}
 			}
 		}
 	}
 
-	if err != nil {
-		// Synthesize execution if not explicitly tracked in store
-		exec = Execution{
-			ID:      execID,
-			TaskID:  task.ID,
-			Attempt: task.AttemptCount,
-			Status:  task.Status,
-		}
+	if !found {
+		return Execution{}, nil, fmt.Errorf("%w: execution record for task %s not found in store", ErrInspectionRejected, task.ID)
 	}
 
-	var evidenceList []InspectionEvidence
-	if a.harness != nil {
-		records, hErr := a.harness.EvidenceForExecution(ctx, string(exec.ID))
-		if hErr == nil && len(records) > 0 {
-			for _, rec := range records {
-				evidenceList = append(evidenceList, InspectionEvidence{
-					ID:      rec.ID,
-					Kind:    string(rec.Kind),
-					Passed:  true,
-					Summary: string(rec.Kind),
-				})
-			}
-		}
+	records, hErr := a.harness.EvidenceForExecution(ctx, string(exec.ID))
+	if hErr != nil {
+		return Execution{}, nil, fmt.Errorf("harness evidence lookup failed: %w", hErr)
+	}
+	if len(records) == 0 {
+		return Execution{}, nil, fmt.Errorf("%w: no governed audit evidence recorded for execution %s", ErrMissingEvidence, exec.ID)
 	}
 
-	// Fallback to evidence IDs recorded on execution
-	if len(evidenceList) == 0 && len(exec.EvidenceIDs) > 0 {
-		for _, eid := range exec.EvidenceIDs {
-			evidenceList = append(evidenceList, InspectionEvidence{
-				ID:      eid,
-				Kind:    "command_execution",
-				Passed:  true,
-				Summary: "execution evidence",
-			})
+	evidenceList := make([]InspectionEvidence, 0, len(records))
+	executionEvidenceSet := make(map[string]struct{}, len(exec.EvidenceIDs))
+	for _, eid := range exec.EvidenceIDs {
+		executionEvidenceSet[eid] = struct{}{}
+	}
+	for _, rec := range records {
+		if rec.ExecutionID != string(exec.ID) {
+			return Execution{}, nil, fmt.Errorf("%w: evidence %s execution mismatch", ErrInspectionRejected, rec.ID)
 		}
+		if rec.TaskID != string(task.ID) {
+			return Execution{}, nil, fmt.Errorf("%w: evidence %s task mismatch", ErrInspectionRejected, rec.ID)
+		}
+		if rec.WorktreeID != task.WorktreeID {
+			return Execution{}, nil, fmt.Errorf("%w: evidence %s worktree mismatch", ErrInspectionRejected, rec.ID)
+		}
+		if rec.Kind == "" {
+			return Execution{}, nil, fmt.Errorf("%w: evidence %s missing kind", ErrInspectionRejected, rec.ID)
+		}
+		if len(executionEvidenceSet) == 0 {
+			return Execution{}, nil, fmt.Errorf("%w: execution %s has no pinned evidence IDs", ErrMissingEvidence, exec.ID)
+		}
+		if _, ok := executionEvidenceSet[rec.ID]; !ok {
+			return Execution{}, nil, fmt.Errorf("%w: evidence %s is not pinned on execution", ErrInspectionRejected, rec.ID)
+		}
+		evidenceList = append(evidenceList, InspectionEvidence{
+			ID: rec.ID, Kind: string(rec.Kind), Passed: true, Summary: string(rec.Kind),
+		})
 	}
 
 	return exec, evidenceList, nil
