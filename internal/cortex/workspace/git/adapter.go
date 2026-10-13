@@ -199,9 +199,68 @@ func (a *Adapter) InspectWorktree(ctx context.Context, id workspace.WorktreeID) 
 	worktree, ok := a.worktrees[id]
 	a.mu.RUnlock()
 	if !ok {
-		return workspace.Worktree{}, workspace.NewError(workspace.ErrNotFound, "worktree does not exist")
+		// Lazy discovery: try to find worktree by ID from filesystem
+		discovered, err := a.discoverWorktreeByID(ctx, id)
+		if err != nil {
+			return workspace.Worktree{}, workspace.NewError(workspace.ErrNotFound, "worktree does not exist")
+		}
+		worktree = discovered
 	}
 	return a.inspectPath(ctx, worktree)
+}
+
+// discoverWorktreeByID attempts to locate a worktree by its ID by scanning
+// the worktree root directory. It matches against the ID derivation logic
+// in idForPath (SHA-256 of lowercased path, first 8 bytes).
+func (a *Adapter) discoverWorktreeByID(ctx context.Context, id workspace.WorktreeID) (workspace.Worktree, error) {
+	if a.worktreeRoot == "" || a.projects == nil {
+		return workspace.Worktree{}, workspace.NewError(workspace.ErrNotFound, "worktree does not exist")
+	}
+	// The worktree ID is derived from the path: "wt-" + hex(sha256(lowercase(path))[:8])
+	// We need to scan the worktree root for project subdirectories and check each worktree path.
+	projects, err := a.projects.ListProjects(ctx)
+	if err != nil {
+		return workspace.Worktree{}, err
+	}
+	for _, proj := range projects {
+		projDir := filepath.Join(a.worktreeRoot, string(proj.ID))
+		entries, err := os.ReadDir(projDir)
+		if err != nil {
+			if os.IsNotExist(err) {
+				continue
+			}
+			return workspace.Worktree{}, err
+		}
+		for _, entry := range entries {
+			if !entry.IsDir() {
+				continue
+			}
+			wtPath := filepath.Join(projDir, entry.Name())
+			derivedID := a.idForPath(wtPath)
+			// CreateWorktree also accepts an explicit stable ID. Support both
+			// persisted explicit IDs (directory name) and path-derived IDs.
+			if derivedID == id || workspace.WorktreeID(entry.Name()) == id {
+				// Found matching path, inspect it to get full worktree state
+				wt := workspace.Worktree{
+					ID:        id,
+					ProjectID: proj.ID,
+					Path:      wtPath,
+					Status:    workspace.WorktreeStatusActive,
+				}
+				inspected, err := a.inspectPath(ctx, wt)
+				if err != nil {
+					return workspace.Worktree{}, err
+				}
+				// Cache the discovered worktree
+				a.mu.Lock()
+				a.worktrees[id] = inspected
+				a.worktreeByPath[filepath.Clean(wtPath)] = id
+				a.mu.Unlock()
+				return inspected, nil
+			}
+		}
+	}
+	return workspace.Worktree{}, workspace.NewError(workspace.ErrNotFound, "worktree does not exist")
 }
 
 func (a *Adapter) CreateWorktree(ctx context.Context, worktree workspace.Worktree) (workspace.Worktree, error) {
