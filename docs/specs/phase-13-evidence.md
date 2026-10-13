@@ -1,9 +1,9 @@
 # Phase 13 Evidence: Brain ↔ Orchestra Routing, Tool Approval, and Staff Coordination
 
 **Parent Epic:** BAN-155  
-**Sprint:** 13.4 Knowledge Retrieval Grounding
-**Date:** 2026-10-13
-**Status:** Sprint 13.4 implementation slice completed and verified; full-suite version baseline remains pre-existing
+**Sprint:** 13.5 End-to-End Hardening and Release Readiness
+**Date:** 2026-10-14
+**Status:** Sprint 13.5 hardening slice implemented and verified; packaged desktop and race gates remain CI-owned
 
 ## Implemented slices
 
@@ -41,7 +41,7 @@ go vet ./internal/cortex/application ./internal/cortex/bridge ./internal/cortex/
 
 ## Linear status
 
-- **BAN-155**: Phase 13 Epic created
+- **BAN-155**: Phase 13 Epic Advanced Staff Orchestration (`Done`)
 - **BAN-156**: Phase 13 Sprint 13.1 completed (`Done`)
 - **BAN-157**: 13.1.1 Define Brain-to-Orchestra application contract (`Done`)
 - **BAN-158**: 13.1.2 Implement Brain-to-Orchestra routing adapter (`Done`)
@@ -57,12 +57,57 @@ go vet ./internal/cortex/application ./internal/cortex/bridge ./internal/cortex/
 - **BAN-170**: 13.3.2 Implement coordination projection and application service (`Done`)
 - **BAN-171**: 13.3.3 Wire coordination Wails bridge, events, and Office/Cockpit mapping (`Done`)
 - **BAN-172**: 13.3.4 Add multi-Staff integration, performance, and security evidence (`Done`)
-- **BAN-163**: Sprint 13.4 Knowledge Retrieval Grounding (`In Progress`)
-- **BAN-173**: 13.4.1 Define routing Knowledge grounding contract and budget policy (`Backlog`)
-- **BAN-174**: 13.4.2 Implement retrieval grounding adapter via application port (`Backlog`)
-- **BAN-175**: 13.4.3 Wire routing context into Brain→Orchestra, Wails bridge, and events (`Backlog`)
-- **BAN-176**: 13.4.4 Add context inspection, provenance redaction tests, and evidence (`Backlog`)
-- **BAN-164**: Sprint 13.5 End-to-End Hardening queued (`Todo`)
+- **BAN-163**: Sprint 13.4 Knowledge Retrieval Grounding (`Done`)
+- **BAN-173**: 13.4.1 Define routing Knowledge grounding contract and budget policy (`Done`)
+- **BAN-174**: 13.4.2 Implement retrieval grounding adapter via application port (`Done`)
+- **BAN-175**: 13.4.3 Wire routing context into Brain→Orchestra, Wails bridge, and events (`Done`)
+- **BAN-176**: 13.4.4 Add context inspection, provenance redaction tests, and evidence (`Done`)
+- **BAN-164**: Sprint 13.5 End-to-End Hardening and Release Readiness (`Done`)
+- **BAN-177**: 13.5.1 Backend E2E authority chain fixture & stress test (`Done`)
+- **BAN-178**: 13.5.2 Frontend Phase 13 route & approval contracts and bridge helpers (`Done`)
+- **BAN-179**: 13.5.3 Multi-route concurrency, duplicate dispatch, and cancellation stress tests (`Done`)
+- **BAN-180**: 13.5.4 Rollback compatibility matrix, evidence documentation, and release review (`Done`)
+
+## Sprint 13.5: End-to-End Hardening and Release Readiness Implemented Slices
+
+| Slice | Files | Status |
+|---|---|---|
+| Complete authority chain integration fixture | `internal/cortex/orchestra/ban164_integration_test.go` | Implemented |
+| Concurrency stress, duplicate dispatch & backpressure tests | `internal/cortex/orchestra/ban164_integration_test.go` | Implemented |
+| Context cancellation & malformed fail-closed tests | `internal/cortex/orchestra/ban164_integration_test.go` | Implemented |
+| Frontend Phase 13 route and approval contracts | `web/src/types/phase13.ts`, `web/src/types/index.ts` | Implemented |
+| Frontend Phase 13 bridge helpers and tests | `web/src/bridge/phase13.ts`, `web/src/bridge/phase13.test.ts` | Implemented |
+| Version baseline alignment | `internal/version/version.go`, `internal/version/version_test.go` | Resolved |
+
+## Sprint 13.5 Contract and authority guarantees
+
+- Complete authority chain proven: Brain (advisory) → Knowledge grounding (bounded) → Orchestra (authoritative task creation in `TaskDraft`) → Governed tool proposal → Compare-and-Set operator approval → Harness execution under policy → Evidence collection → Inspector / MergeAuthority gating (`TaskSuccess` only via Inspector).
+- High-concurrency duplicate routing (50 concurrent calls, 10 keys x 5 duplicates) proven idempotent: exactly 10 tasks created, all duplicate calls return matching task IDs.
+- Concurrent operator approvals race safely under CAS semantics: exactly one execution proceeds, all other attempts return idempotent/terminal state.
+- Bounded event hooks deliver events reliably without deadlocks, blocking, or secret/absolute-path leakage.
+- Context cancellation stops routing before task persistence; malformed/unstructured Brain output fails closed.
+- Version baseline in `internal/version/version.go` aligned with `VERSION` (`v0.10.0-phase10`), resolving pre-existing test mismatch.
+
+## Sprint 13.5 Verification
+
+```text
+go test ./internal/cortex/orchestra -run BAN164 -count=1 PASS (0.6s)
+go test ./internal/cortex/application ./internal/cortex/bridge ./internal/platform ./internal/version -count=1 PASS
+go vet ./internal/cortex/application ./internal/cortex/bridge ./internal/cortex/orchestra ./internal/platform ./internal/version PASS
+npm --prefix web test PASS (35 files / 212 tests)
+npm --prefix web run build PASS
+npm --prefix web run lint PASS
+npm --prefix web run typecheck PASS
+```
+
+## Rollback & Data-Contract Compatibility
+
+- Sprint 13.5 rollback target: `ebc049b` (Phase 13 Sprint 13.4).
+- Sprint 13.4 rollback target: `6a8e514` (Phase 13 Sprint 13.3).
+- Sprint 13.3 rollback target: `0e57687` (Phase 13 Sprint 13.2).
+- Sprint 13.1 fallback: `4abe8bc`; Phase 12 fallback: `937e25d`.
+- Data-contract backward compatibility: all new schemas (`cortexos.brain-orchestra.bridge.v1`, `cortexos.tool-approval.proposal.v1`, `cortexos.tool-approval.decision.v1`, `cortexos.coordination.*`, `cortexos.knowledge.context.v1`) are additive and versioned. Pre-Phase 13 stores and endpoints continue functioning without migration blockers.
+
 
 ## Sprint 13.4: Knowledge Retrieval Grounding Implemented Slices
 
@@ -96,7 +141,7 @@ npm --prefix web run lint PASS
 npm --prefix web run typecheck PASS
 ```
 
-Note: `go test -race` was attempted but the local Windows cgo toolchain failed before package compilation (`cgo.exe`); no runtime race result is claimed.
+Note: `go test -race` was attempted but the local Windows cgo toolchain failed before package compilation (`cgo.exe`); no runtime race result is claimed. CI Linux/macOS race jobs remain the authoritative gate. Packaged desktop smoke remains startup-only and is also CI-owned; functional Phase 13 behavior is covered by the backend fixture and frontend contract tests.
 
 ## Sprint 13.3: Multi-Staff Coordination Implemented Slices
 

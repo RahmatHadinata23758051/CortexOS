@@ -24,7 +24,9 @@ export * from './knowledge'
 export * from './knowledge-context'
 export * from './harness'
 export * from './brain'
+export * from './phase13'
 import type { WorkspaceBridge } from './workspace'
+import type { Phase13Bridge } from './phase13'
 import type { KnowledgeBridge } from './knowledge'
 import type { KnowledgeContextBridge } from './knowledge-context'
 import type { HarnessBridge } from './harness'
@@ -34,7 +36,7 @@ import type { OrchestraBridge } from './orchestra'
 import type { CoordinationBridge } from './coordination'
 import type { BrainBridge } from './brain'
 
-export type FullBridge = RuntimeBridge & WorkspaceBridge & OfficeBridge & CockpitBridge & OrchestraBridge & CoordinationBridge & KnowledgeBridge & KnowledgeContextBridge & HarnessBridge & BrainBridge
+export type FullBridge = RuntimeBridge & WorkspaceBridge & OfficeBridge & CockpitBridge & OrchestraBridge & CoordinationBridge & KnowledgeBridge & KnowledgeContextBridge & HarnessBridge & BrainBridge & Phase13Bridge
 
 export type WailsWindow = Window & {
   go?: {
@@ -79,6 +81,11 @@ export const wailsRuntimeBridge: FullBridge = {
   GetHarnessEvidence: (request) => getWailsBridge().GetHarnessEvidence(request),
   DispatchBrainTask: (request) => getWailsBridge().DispatchBrainTask(request),
   DispatchBrainTaskStream: (request) => getWailsBridge().DispatchBrainTaskStream(request),
+  RouteBrainTaskToOrchestra: (request) => getWailsBridge().RouteBrainTaskToOrchestra(request),
+  ProposeToolCall: (proposal) => getWailsBridge().ProposeToolCall(proposal),
+  DecideToolCall: (decision) => getWailsBridge().DecideToolCall(decision),
+  GetToolApproval: (proposalId) => getWailsBridge().GetToolApproval(proposalId),
+  ListPendingToolApprovals: () => getWailsBridge().ListPendingToolApprovals(),
 }
 
 export async function getRuntimeSnapshot(
