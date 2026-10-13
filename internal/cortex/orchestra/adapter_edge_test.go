@@ -130,3 +130,102 @@ func TestProductionAdapter_FailsClosedOnEvidenceWorktreeMismatch(t *testing.T) {
 		t.Fatalf("status mutated on error: %s", persisted.Status)
 	}
 }
+
+func TestProductionAdapter_FailsClosedOnExtraEvidenceNotPinned(t *testing.T) {
+	adapter, orchStore, harnessStore := setupTestAdapter(t)
+	ctx := context.Background()
+
+	taskID := orchestra.TaskID("task-extra-ev")
+	wtID := "wt-1"
+
+	task := orchestra.Task{
+		ID:                 taskID,
+		ProjectID:          "p-1",
+		WorktreeID:         wtID,
+		Title:              "Extra Evidence Task",
+		AcceptanceCriteria: []string{"audit"},
+		Status:             orchestra.TaskAwaitingInspection,
+		MaxAttempts:        3,
+		AttemptCount:       1,
+		CreatedAt:          time.Now().UTC(),
+		UpdatedAt:          time.Now().UTC(),
+		SchemaVersion:      orchestra.ContractVersion,
+	}
+	_ = orchStore.SaveTask(ctx, task)
+
+	execID := orchestra.ExecutionID(string(taskID) + "-1")
+	exec := orchestra.Execution{
+		ID:          execID,
+		TaskID:      taskID,
+		Attempt:     1,
+		Status:      orchestra.TaskAwaitingInspection,
+		StartedAt:   time.Now().UTC(),
+		EvidenceIDs: []string{"ev-pinned-1"},
+	}
+	_ = orchStore.SaveExecution(ctx, exec)
+
+	// Execution pins only ev-pinned-1, but harness store contains one pinned + one unpinned record.
+	pinned, _ := harness.NewEvidenceRecord(string(execID), string(taskID), wtID, harness.EvidenceKindCommandExecution, map[string]string{"result": "pass"})
+	pinned.ID = "ev-pinned-1"
+	_ = harnessStore.SaveEvidence(ctx, pinned)
+
+	unpinned, _ := harness.NewEvidenceRecord(string(execID), string(taskID), wtID, harness.EvidenceKindCommandExecution, map[string]string{"result": "pass"})
+	unpinned.ID = "ev-unpinned"
+	_ = harnessStore.SaveEvidence(ctx, unpinned)
+
+	if _, err := adapter.MergeTask(ctx, task.ID, "attempt merge"); err == nil {
+		t.Fatal("expected rejection on extra unpinned evidence, got nil")
+	}
+
+	persisted, _ := orchStore.GetTask(ctx, task.ID)
+	if persisted.Status != orchestra.TaskAwaitingInspection {
+		t.Fatalf("status mutated on error: %s", persisted.Status)
+	}
+}
+
+type failingInspector struct{}
+
+func (f failingInspector) Inspect(context.Context, orchestra.InspectionRequest) (orchestra.InspectionResult, error) {
+	return orchestra.InspectionResult{}, orchestra.ErrInspectionRejected
+}
+
+func TestProductionAdapter_MergeTask_PersistsRejectionEvent(t *testing.T) {
+	dir := t.TempDir()
+	ctx := context.Background()
+
+	orchStore, _ := orchestrasqlite.Open(ctx, filepath.Join(dir, "orchestra.db"))
+	defer orchStore.Close()
+	harnessStore, _ := harnesssqlite.Open(ctx, filepath.Join(dir, "harness.db"))
+	defer harnessStore.Close()
+
+	adapter, err := orchestra.NewProductionAdapter(orchestra.ProductionAdapterConfig{
+		TaskStore:         orchStore,
+		HarnessStore:      harnessStore,
+		WorktreeInspector: &mockWorktreeInspector{worktreeID: "wt-1", valid: true},
+		Inspector:         failingInspector{},
+	})
+	if err != nil {
+		t.Fatalf("create adapter: %v", err)
+	}
+
+	task, _ := seedTaskAwaitingInspection(t, orchStore, harnessStore, "task-reject", "wt-1")
+
+	if _, err := adapter.MergeTask(ctx, task.ID, "attempt merge"); err == nil {
+		t.Fatal("expected inspection rejection, got nil")
+	}
+
+	events, err := orchStore.ListEvents(ctx, task.ID)
+	if err != nil {
+		t.Fatalf("list events: %v", err)
+	}
+	found := false
+	for _, ev := range events {
+		if ev.Type == orchestra.EventInspectionRejected {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatal("expected inspection.rejected event persisted on rejection")
+	}
+}

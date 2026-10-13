@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"sort"
+	"sync"
 	"time"
 
 	"github.com/RahmatHadinata23758051/CortexOS/internal/cortex/harness"
@@ -30,11 +31,14 @@ type ProductionAdapterConfig struct {
 
 // ProductionAdapter implements application.OrchestraPort using real SQLite persistence,
 // Harness evidence validation, worktree cleanliness verification, and Inspector acceptance (ADR-0005).
+// MergeTask is serialized per-task to prevent concurrent merge races.
 type ProductionAdapter struct {
-	tasks     TaskStore
-	harness   HarnessEvidenceReader
-	worktrees WorktreeInspector
-	inspector Inspector
+	tasks       TaskStore
+	harness     HarnessEvidenceReader
+	worktrees   WorktreeInspector
+	inspector   Inspector
+	mergeMu     sync.Mutex
+	activeMerge map[TaskID]struct{}
 }
 
 // NewProductionAdapter constructs the production Orchestra adapter.
@@ -52,10 +56,11 @@ func NewProductionAdapter(config ProductionAdapterConfig) (*ProductionAdapter, e
 		config.Inspector = MergeAuthority{Capability: MergeCapability}
 	}
 	return &ProductionAdapter{
-		tasks:     config.TaskStore,
-		harness:   config.HarnessStore,
-		worktrees: config.WorktreeInspector,
-		inspector: config.Inspector,
+		tasks:       config.TaskStore,
+		harness:     config.HarnessStore,
+		worktrees:   config.WorktreeInspector,
+		inspector:   config.Inspector,
+		activeMerge: make(map[TaskID]struct{}),
 	}, nil
 }
 
@@ -149,9 +154,27 @@ func (a *ProductionAdapter) MergeTask(ctx context.Context, id TaskID, note strin
 	if a == nil || a.tasks == nil {
 		return Task{}, ErrStoreUnavailable
 	}
+	if ctx == nil {
+		return Task{}, fmt.Errorf("%w: context is required", ErrInspectionRejected)
+	}
 	if err := ctx.Err(); err != nil {
 		return Task{}, err
 	}
+
+	// In-process lock per task ID to prevent duplicate concurrent merge requests
+	a.mergeMu.Lock()
+	if _, running := a.activeMerge[id]; running {
+		a.mergeMu.Unlock()
+		return Task{}, fmt.Errorf("%w: merge already in progress for task %s", ErrInspectionRejected, id)
+	}
+	a.activeMerge[id] = struct{}{}
+	a.mergeMu.Unlock()
+
+	defer func() {
+		a.mergeMu.Lock()
+		delete(a.activeMerge, id)
+		a.mergeMu.Unlock()
+	}()
 
 	task, err := a.tasks.GetTask(ctx, id)
 	if err != nil {
@@ -193,7 +216,7 @@ func (a *ProductionAdapter) MergeTask(ctx context.Context, id TaskID, note strin
 
 	result, err := a.inspector.Inspect(ctx, inspReq)
 	if err != nil {
-		_ = a.tasks.AppendEvent(ctx, TaskEvent{
+		rejectionEventErr := a.tasks.AppendEvent(ctx, TaskEvent{
 			TaskID:      id,
 			ExecutionID: exec.ID,
 			Type:        EventInspectionRejected,
@@ -202,11 +225,24 @@ func (a *ProductionAdapter) MergeTask(ctx context.Context, id TaskID, note strin
 			Message:     fmt.Sprintf("inspection rejected: %v", err),
 			OccurredAt:  time.Now().UTC(),
 		})
+		if rejectionEventErr != nil {
+			return Task{}, errors.Join(err, fmt.Errorf("persist inspection rejection event: %w", rejectionEventErr))
+		}
 		return Task{}, err
 	}
 
 	if !result.Accepted {
-		return Task{}, ErrInspectionRejected
+		rejectionErr := ErrInspectionRejected
+		if result.Reason != "" {
+			rejectionErr = fmt.Errorf("%w: %s", rejectionErr, result.Reason)
+		}
+		if eventErr := a.tasks.AppendEvent(ctx, TaskEvent{
+			TaskID: id, ExecutionID: exec.ID, Type: EventInspectionRejected,
+			From: task.Status, To: task.Status, Message: rejectionErr.Error(), OccurredAt: time.Now().UTC(),
+		}); eventErr != nil {
+			return Task{}, errors.Join(rejectionErr, fmt.Errorf("persist inspection rejection event: %w", eventErr))
+		}
+		return Task{}, rejectionErr
 	}
 
 	// 4. Authoritative transition to TaskSuccess
@@ -294,6 +330,9 @@ func (a *ProductionAdapter) resolveExecutionAndEvidence(ctx context.Context, tas
 	for _, eid := range exec.EvidenceIDs {
 		executionEvidenceSet[eid] = struct{}{}
 	}
+	if len(executionEvidenceSet) == 0 {
+		return Execution{}, nil, fmt.Errorf("%w: execution %s has no pinned evidence IDs", ErrMissingEvidence, exec.ID)
+	}
 	for _, rec := range records {
 		if rec.ExecutionID != string(exec.ID) {
 			return Execution{}, nil, fmt.Errorf("%w: evidence %s execution mismatch", ErrInspectionRejected, rec.ID)
@@ -307,15 +346,17 @@ func (a *ProductionAdapter) resolveExecutionAndEvidence(ctx context.Context, tas
 		if rec.Kind == "" {
 			return Execution{}, nil, fmt.Errorf("%w: evidence %s missing kind", ErrInspectionRejected, rec.ID)
 		}
-		if len(executionEvidenceSet) == 0 {
-			return Execution{}, nil, fmt.Errorf("%w: execution %s has no pinned evidence IDs", ErrMissingEvidence, exec.ID)
-		}
 		if _, ok := executionEvidenceSet[rec.ID]; !ok {
 			return Execution{}, nil, fmt.Errorf("%w: evidence %s is not pinned on execution", ErrInspectionRejected, rec.ID)
 		}
 		evidenceList = append(evidenceList, InspectionEvidence{
 			ID: rec.ID, Kind: string(rec.Kind), Passed: true, Summary: string(rec.Kind),
 		})
+	}
+
+	// Exact-set check: every pinned evidence ID must appear in the governed records
+	if len(evidenceList) != len(executionEvidenceSet) {
+		return Execution{}, nil, fmt.Errorf("%w: execution %s evidence count mismatch (pinned=%d, governed=%d)", ErrInspectionRejected, exec.ID, len(executionEvidenceSet), len(evidenceList))
 	}
 
 	return exec, evidenceList, nil
@@ -346,7 +387,13 @@ func (a *ProductionAdapter) updatePlanGraph(ctx context.Context, projectID strin
 		statusMap[t.ID] = t.Status
 	}
 
-	// Check each draft task: if all its dependencies are TaskSuccess, unblock it to TaskReady
+	// Snapshot original statuses so that tasks unblocked in this pass do not cascade
+	// into further unblocking within the same merge.
+	snapshot := make(map[TaskID]TaskStatus, len(projectTasks))
+	for _, t := range projectTasks {
+		snapshot[t.ID] = t.Status
+	}
+
 	for _, t := range projectTasks {
 		if t.Status != TaskDraft {
 			continue
@@ -357,7 +404,7 @@ func (a *ProductionAdapter) updatePlanGraph(ctx context.Context, projectID strin
 
 		allDone := true
 		for _, depID := range t.Dependencies {
-			if statusMap[depID] != TaskSuccess {
+			if snapshot[depID] != TaskSuccess {
 				allDone = false
 				break
 			}
@@ -372,14 +419,16 @@ func (a *ProductionAdapter) updatePlanGraph(ctx context.Context, projectID strin
 			if saveErr := a.tasks.SaveTask(ctx, res.Task); saveErr != nil {
 				return saveErr
 			}
-			_ = a.tasks.AppendEvent(ctx, TaskEvent{
+			if eventErr := a.tasks.AppendEvent(ctx, TaskEvent{
 				TaskID:     t.ID,
 				Type:       EventTaskValidated,
 				From:       t.Status,
 				To:         TaskReady,
 				Message:    "all dependencies completed; task unblocked and ready",
 				OccurredAt: time.Now().UTC(),
-			})
+			}); eventErr != nil {
+				return eventErr
+			}
 		}
 	}
 
