@@ -19,6 +19,7 @@ import (
 	workspacesqlite "github.com/RahmatHadinata23758051/CortexOS/internal/cortex/workspace/sqlite"
 	"github.com/RahmatHadinata23758051/CortexOS/internal/cortex/workspace/vault"
 	"github.com/RahmatHadinata23758051/CortexOS/internal/cortex/workspace/watch"
+	"github.com/RahmatHadinata23758051/CortexOS/internal/logging"
 	"github.com/RahmatHadinata23758051/CortexOS/internal/platform"
 )
 
@@ -118,6 +119,7 @@ func OpenOrchestra(ctx context.Context, canonicalRoot string, workspaceService *
 		HarnessStore:      harnessStore,
 		WorktreeInspector: &workspaceWorktreeInspector{workspace: workspaceService},
 		Inspector:         orchestra.MergeAuthority{Capability: orchestra.MergeCapability},
+		Logger:            logging.DefaultLogger(),
 	})
 	if err != nil {
 		_ = closeAll()

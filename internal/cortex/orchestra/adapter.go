@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/RahmatHadinata23758051/CortexOS/internal/cortex/harness"
+	"github.com/RahmatHadinata23758051/CortexOS/internal/logging"
 )
 
 // WorktreeInspector abstracts worktree verification (e.g. from workspace.Service).
@@ -27,6 +28,7 @@ type ProductionAdapterConfig struct {
 	HarnessStore      HarnessEvidenceReader
 	WorktreeInspector WorktreeInspector
 	Inspector         Inspector
+	Logger            logging.Logger
 }
 
 // ProductionAdapter implements application.OrchestraPort using real SQLite persistence,
@@ -37,6 +39,7 @@ type ProductionAdapter struct {
 	harness     HarnessEvidenceReader
 	worktrees   WorktreeInspector
 	inspector   Inspector
+	logger      logging.Logger
 	mergeMu     sync.Mutex
 	activeMerge map[TaskID]struct{}
 }
@@ -55,11 +58,15 @@ func NewProductionAdapter(config ProductionAdapterConfig) (*ProductionAdapter, e
 	if config.Inspector == nil {
 		config.Inspector = MergeAuthority{Capability: MergeCapability}
 	}
+	if config.Logger == nil {
+		config.Logger = logging.NopLogger{}
+	}
 	return &ProductionAdapter{
 		tasks:       config.TaskStore,
 		harness:     config.HarnessStore,
 		worktrees:   config.WorktreeInspector,
 		inspector:   config.Inspector,
+		logger:      config.Logger,
 		activeMerge: make(map[TaskID]struct{}),
 	}, nil
 }
@@ -161,10 +168,21 @@ func (a *ProductionAdapter) MergeTask(ctx context.Context, id TaskID, note strin
 		return Task{}, err
 	}
 
+	startTime := time.Now()
+	a.logger.InfoContext(ctx, "merge attempt started",
+		"event", "orchestra_merge_started",
+		"task_id", id,
+		"note", note,
+	)
+
 	// In-process lock per task ID to prevent duplicate concurrent merge requests
 	a.mergeMu.Lock()
 	if _, running := a.activeMerge[id]; running {
 		a.mergeMu.Unlock()
+		a.logger.WarnContext(ctx, "merge already in progress",
+			"event", "orchestra_merge_conflict",
+			"task_id", id,
+		)
 		return Task{}, fmt.Errorf("%w: merge already in progress for task %s", ErrInspectionRejected, id)
 	}
 	a.activeMerge[id] = struct{}{}
@@ -178,32 +196,84 @@ func (a *ProductionAdapter) MergeTask(ctx context.Context, id TaskID, note strin
 
 	task, err := a.tasks.GetTask(ctx, id)
 	if err != nil {
+		a.logger.ErrorContext(ctx, "failed to load task for merge",
+			"event", "orchestra_merge_load_failed",
+			"task_id", id,
+			"error", err.Error(),
+			"duration_ms", time.Since(startTime).Milliseconds(),
+		)
 		return Task{}, err
 	}
 
 	if task.Status != TaskAwaitingInspection {
+		a.logger.WarnContext(ctx, "invalid task status for merge",
+			"event", "orchestra_merge_invalid_status",
+			"task_id", id,
+			"current_status", task.Status,
+			"expected_status", TaskAwaitingInspection,
+			"duration_ms", time.Since(startTime).Milliseconds(),
+		)
 		return Task{}, fmt.Errorf("%w: task status is %s, expected %s", ErrInspectionRejected, task.Status, TaskAwaitingInspection)
 	}
 
 	// 1. Resolve worktree state (strictly required)
 	var wtState WorktreeState
 	if task.WorktreeID == "" {
+		a.logger.ErrorContext(ctx, "task missing worktree id",
+			"event", "orchestra_merge_missing_worktree",
+			"task_id", id,
+			"duration_ms", time.Since(startTime).Milliseconds(),
+		)
 		return Task{}, fmt.Errorf("%w: task worktree id is missing", ErrInvalidWorktree)
 	}
 	state, wtErr := a.worktrees.InspectWorktreeState(ctx, task.WorktreeID)
 	if wtErr != nil {
+		a.logger.ErrorContext(ctx, "worktree inspection failed",
+			"event", "orchestra_merge_worktree_inspect_failed",
+			"task_id", id,
+			"worktree_id", task.WorktreeID,
+			"error", wtErr.Error(),
+			"duration_ms", time.Since(startTime).Milliseconds(),
+		)
 		return Task{}, fmt.Errorf("%w: inspect worktree: %w", ErrInvalidWorktree, wtErr)
 	}
 	wtState = state
+	a.logger.DebugContext(ctx, "worktree state resolved",
+		"event", "orchestra_merge_worktree_resolved",
+		"task_id", id,
+		"worktree_id", task.WorktreeID,
+		"worktree_revision", wtState.Revision,
+		"worktree_dirty", wtState.Dirty,
+		"worktree_valid", wtState.Valid,
+		"duration_ms", time.Since(startTime).Milliseconds(),
+	)
 
 	// 2. Resolve execution and evidence
 	exec, evidenceList, err := a.resolveExecutionAndEvidence(ctx, task)
 	if err != nil {
+		a.logger.ErrorContext(ctx, "evidence resolution failed",
+			"event", "orchestra_merge_evidence_failed",
+			"task_id", id,
+			"error", err.Error(),
+			"duration_ms", time.Since(startTime).Milliseconds(),
+		)
 		return Task{}, err
 	}
 	if exec.ID == "" {
+		a.logger.ErrorContext(ctx, "execution record not found",
+			"event", "orchestra_merge_no_execution",
+			"task_id", id,
+			"duration_ms", time.Since(startTime).Milliseconds(),
+		)
 		return Task{}, fmt.Errorf("%w: execution record not found for merge", ErrInspectionRejected)
 	}
+	a.logger.DebugContext(ctx, "execution and evidence resolved",
+		"event", "orchestra_merge_evidence_resolved",
+		"task_id", id,
+		"execution_id", exec.ID,
+		"evidence_count", len(evidenceList),
+		"duration_ms", time.Since(startTime).Milliseconds(),
+	)
 
 	// 3. Invoke Inspector (fail-closed if authority or evidence rejected)
 	inspReq := InspectionRequest{
@@ -226,8 +296,21 @@ func (a *ProductionAdapter) MergeTask(ctx context.Context, id TaskID, note strin
 			OccurredAt:  time.Now().UTC(),
 		})
 		if rejectionEventErr != nil {
+			a.logger.ErrorContext(ctx, "persist inspection rejection event failed",
+				"event", "orchestra_merge_rejection_persist_failed",
+				"task_id", id,
+				"execution_id", exec.ID,
+				"error", rejectionEventErr.Error(),
+			)
 			return Task{}, errors.Join(err, fmt.Errorf("persist inspection rejection event: %w", rejectionEventErr))
 		}
+		a.logger.WarnContext(ctx, "inspection rejected with error",
+			"event", "orchestra_merge_rejected_error",
+			"task_id", id,
+			"execution_id", exec.ID,
+			"error", err.Error(),
+			"duration_ms", time.Since(startTime).Milliseconds(),
+		)
 		return Task{}, err
 	}
 
@@ -240,8 +323,22 @@ func (a *ProductionAdapter) MergeTask(ctx context.Context, id TaskID, note strin
 			TaskID: id, ExecutionID: exec.ID, Type: EventInspectionRejected,
 			From: task.Status, To: task.Status, Message: rejectionErr.Error(), OccurredAt: time.Now().UTC(),
 		}); eventErr != nil {
+			a.logger.ErrorContext(ctx, "persist inspection rejection event failed",
+				"event", "orchestra_merge_rejection_persist_failed",
+				"task_id", id,
+				"execution_id", exec.ID,
+				"error", eventErr.Error(),
+			)
 			return Task{}, errors.Join(rejectionErr, fmt.Errorf("persist inspection rejection event: %w", eventErr))
 		}
+		a.logger.WarnContext(ctx, "inspection rejected",
+			"event", "orchestra_merge_rejected",
+			"task_id", id,
+			"execution_id", exec.ID,
+			"reason", result.Reason,
+			"evidence_count", len(evidenceList),
+			"duration_ms", time.Since(startTime).Milliseconds(),
+		)
 		return Task{}, rejectionErr
 	}
 
@@ -271,7 +368,23 @@ func (a *ProductionAdapter) MergeTask(ctx context.Context, id TaskID, note strin
 
 	unblockedTasks, validatedEvents, err := a.calculatePlanUnblocking(ctx, task.ProjectID, successTask.ID)
 	if err != nil {
+		a.logger.ErrorContext(ctx, "plan unblocking calculation failed",
+			"event", "orchestra_merge_unblocking_failed",
+			"task_id", id,
+			"error", err.Error(),
+			"duration_ms", time.Since(startTime).Milliseconds(),
+		)
 		return Task{}, fmt.Errorf("calculate plan unblocking: %w", err)
+	}
+
+	if len(unblockedTasks) > 0 {
+		a.logger.InfoContext(ctx, "plan unblocking calculated",
+			"event", "orchestra_merge_unblocked_tasks",
+			"task_id", id,
+			"unblocked_count", len(unblockedTasks),
+			"unblocked_task_ids", taskIDsToStrings(unblockedTasks),
+			"duration_ms", time.Since(startTime).Milliseconds(),
+		)
 	}
 
 	commitPayload := MergeCommit{
@@ -284,28 +397,84 @@ func (a *ProductionAdapter) MergeTask(ctx context.Context, id TaskID, note strin
 	// 5. If store supports atomic CommitMerge, execute under single transaction
 	if committer, ok := a.tasks.(MergeCommitter); ok {
 		if err := committer.CommitMerge(ctx, commitPayload); err != nil {
+			a.logger.ErrorContext(ctx, "atomic commit merge failed",
+				"event", "orchestra_merge_atomic_commit_failed",
+				"task_id", id,
+				"error", err.Error(),
+				"duration_ms", time.Since(startTime).Milliseconds(),
+			)
 			return Task{}, fmt.Errorf("atomic commit merge: %w", err)
 		}
+		a.logger.InfoContext(ctx, "merge committed atomically",
+			"event", "orchestra_merge_committed",
+			"task_id", id,
+			"execution_id", exec.ID,
+			"unblocked_count", len(unblockedTasks),
+			"evidence_count", len(evidenceList),
+			"duration_ms", time.Since(startTime).Milliseconds(),
+		)
 		return successTask, nil
 	}
 
 	// Fallback for non-atomic stores (e.g. testing doubles without MergeCommitter)
 	if err := a.tasks.SaveTask(ctx, successTask); err != nil {
+		a.logger.ErrorContext(ctx, "persist accepted task failed",
+			"event", "orchestra_merge_persist_task_failed",
+			"task_id", id,
+			"error", err.Error(),
+			"duration_ms", time.Since(startTime).Milliseconds(),
+		)
 		return Task{}, fmt.Errorf("persist accepted task: %w", err)
 	}
 	if err := a.tasks.AppendEvent(ctx, acceptedEvent); err != nil {
+		a.logger.ErrorContext(ctx, "append inspection accepted event failed",
+			"event", "orchestra_merge_persist_event_failed",
+			"task_id", id,
+			"error", err.Error(),
+			"duration_ms", time.Since(startTime).Milliseconds(),
+		)
 		return Task{}, fmt.Errorf("append inspection accepted event: %w", err)
 	}
 	for i, ut := range unblockedTasks {
 		if err := a.tasks.SaveTask(ctx, ut); err != nil {
+			a.logger.ErrorContext(ctx, "persist unblocked task failed",
+				"event", "orchestra_merge_persist_unblocked_failed",
+				"task_id", id,
+				"unblocked_task_id", ut.ID,
+				"error", err.Error(),
+				"duration_ms", time.Since(startTime).Milliseconds(),
+			)
 			return successTask, fmt.Errorf("persist unblocked task %s: %w", ut.ID, err)
 		}
 		if err := a.tasks.AppendEvent(ctx, validatedEvents[i]); err != nil {
+			a.logger.ErrorContext(ctx, "append validated event failed",
+				"event", "orchestra_merge_persist_validated_failed",
+				"task_id", id,
+				"unblocked_task_id", ut.ID,
+				"error", err.Error(),
+				"duration_ms", time.Since(startTime).Milliseconds(),
+			)
 			return successTask, fmt.Errorf("append validated event for %s: %w", ut.ID, err)
 		}
 	}
 
+	a.logger.InfoContext(ctx, "merge committed (fallback)",
+		"event", "orchestra_merge_committed_fallback",
+		"task_id", id,
+		"execution_id", exec.ID,
+		"unblocked_count", len(unblockedTasks),
+		"evidence_count", len(evidenceList),
+		"duration_ms", time.Since(startTime).Milliseconds(),
+	)
 	return successTask, nil
+}
+
+func taskIDsToStrings(tasks []Task) []string {
+	result := make([]string, 0, len(tasks))
+	for _, t := range tasks {
+		result = append(result, string(t.ID))
+	}
+	return result
 }
 
 // calculatePlanUnblocking determines which draft tasks become ready when the merged task succeeds.
