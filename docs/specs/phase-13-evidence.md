@@ -83,4 +83,5 @@ go vet ./internal/cortex/application ./internal/cortex/bridge ./internal/cortex/
 ## Rollback
 
 Sprint 13.2 rollback target: `4abe8bc` (Phase 13 Sprint 13.1); Phase 12 fallback: `937e25d`.
+Sprint 13.2 commit: `0e57687` (feat: add governed tool approval gates).
 
