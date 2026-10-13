@@ -10,6 +10,8 @@ import (
 	"time"
 
 	"github.com/RahmatHadinata23758051/CortexOS/internal/cortex/application"
+	"github.com/RahmatHadinata23758051/CortexOS/internal/cortex/brain"
+	"github.com/RahmatHadinata23758051/CortexOS/internal/cortex/bridge"
 	harnesssqlite "github.com/RahmatHadinata23758051/CortexOS/internal/cortex/harness/sqlite"
 	"github.com/RahmatHadinata23758051/CortexOS/internal/cortex/orchestra"
 	orchestrasqlite "github.com/RahmatHadinata23758051/CortexOS/internal/cortex/orchestra/sqlite"
@@ -191,7 +193,21 @@ func Run() error {
 	}
 	defer func() { _ = closeProvider() }()
 
-	service := application.NewServiceWithWorkspaceAndOrchestraAndProvider(workspaceService, orchestraPort, providerPort)
+	// Open Brain with resilient dispatcher if provider is available
+	var brainPort application.BrainPort
+	if providerPort != nil {
+		resilient, err := brain.NewResilientDispatcher(providerPort, brain.DefaultRetryPolicy())
+		if err != nil {
+			return err
+		}
+		brainAdapter, err := bridge.NewRealBrainAdapter(resilient)
+		if err != nil {
+			return err
+		}
+		brainPort = brainAdapter
+	}
+
+	service := application.NewServiceWithWorkspaceAndOrchestraAndProviderAndBrain(workspaceService, orchestraPort, providerPort, brainPort)
 	app := platform.New()
 	bridge := platform.NewBridge(service)
 	app.OnStartup(bridge.SetRuntimeContext)

@@ -179,6 +179,14 @@ func (rd *ResilientDispatcher) Attempts() int {
 	return rd.attempts
 }
 
+// ProviderName returns the name of the underlying provider port.
+func (rd *ResilientDispatcher) ProviderName() string {
+	if rd == nil || rd.dispatcher == nil {
+		return "disabled"
+	}
+	return rd.dispatcher.ProviderName()
+}
+
 // RecoveryManager orchestrates checkpoint/recovery for long-running brain sessions.
 // It is designed for soak testing and production durability.
 type RecoveryManager struct {

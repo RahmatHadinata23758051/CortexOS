@@ -34,6 +34,7 @@ type Service struct {
 	knowledge KnowledgePort
 	cockpit   CockpitPort
 	provider  ProviderPort
+	brain     BrainPort
 }
 
 // NewService creates the minimal Phase 1 application service.
@@ -62,11 +63,6 @@ func NewServiceWithHarness(harnessService HarnessPort) *Service {
 	return &Service{harness: harnessService}
 }
 
-// NewServiceWithAll combines Workspace, Orchestra, and Harness application boundaries.
-func NewServiceWithAll(workspaceService *workspace.Service, orchestraService OrchestraPort, harnessService HarnessPort) *Service {
-	return &Service{workspace: workspaceService, orchestra: orchestraService, harness: harnessService}
-}
-
 // NewServiceWithStaff adds the optional Staff observability boundary.
 func NewServiceWithStaff(staffService StaffPort) *Service {
 	return &Service{staff: staffService}
@@ -87,14 +83,36 @@ func NewServiceWithProvider(providerService ProviderPort) *Service {
 	return &Service{provider: providerService}
 }
 
-// NewServiceWithWorkspaceAndOrchestraAndProvider adds Workspace, Orchestra, and Provider boundaries.
+// NewServiceWithBrain adds the optional Brain application boundary.
+func NewServiceWithBrain(brainService BrainPort) *Service {
+	return &Service{brain: brainService}
+}
+
+// NewServiceWithProviderAndBrain adds Provider and Brain boundaries.
+func NewServiceWithProviderAndBrain(providerService ProviderPort, brainService BrainPort) *Service {
+	return &Service{provider: providerService, brain: brainService}
+}
+
+// NewServiceWithWorkspaceAndOrchestraAndProviderAndBrain adds Workspace, Orchestra, Provider, and Brain boundaries.
+func NewServiceWithWorkspaceAndOrchestraAndProviderAndBrain(workspaceService *workspace.Service, orchestraService OrchestraPort, providerService ProviderPort, brainService BrainPort) *Service {
+	return &Service{workspace: workspaceService, orchestra: orchestraService, provider: providerService, brain: brainService}
+}
+
+// NewServiceWithWorkspaceAndOrchestraAndProvider is deprecated; use the four-port
+// constructor and pass an explicit nil brain when the provider is disabled.
+// Removed to force fail-closed Brain wiring through OpenBrain.
 func NewServiceWithWorkspaceAndOrchestraAndProvider(workspaceService *workspace.Service, orchestraService OrchestraPort, providerService ProviderPort) *Service {
-	return &Service{workspace: workspaceService, orchestra: orchestraService, provider: providerService}
+	return NewServiceWithWorkspaceAndOrchestraAndProviderAndBrain(workspaceService, orchestraService, providerService, nil)
 }
 
 // NewServiceWithFull combines all available application boundaries.
 func NewServiceWithFull(workspaceService *workspace.Service, orchestraService OrchestraPort, harnessService HarnessPort, staffService StaffPort, knowledgeService KnowledgePort) *Service {
 	return &Service{workspace: workspaceService, orchestra: orchestraService, harness: harnessService, staff: staffService, knowledge: knowledgeService}
+}
+
+// NewServiceWithAll combines all available application boundaries including Brain.
+func NewServiceWithAll(workspaceService *workspace.Service, orchestraService OrchestraPort, harnessService HarnessPort, staffService StaffPort, knowledgeService KnowledgePort, brainService BrainPort) *Service {
+	return &Service{workspace: workspaceService, orchestra: orchestraService, harness: harnessService, staff: staffService, knowledge: knowledgeService, brain: brainService}
 }
 
 // GetRuntimeSnapshot returns a deterministic local runtime status.
@@ -122,4 +140,20 @@ func (s *Service) GetRuntimeSnapshot(ctx context.Context, request SnapshotReques
 // RuntimeSchemaVersion returns the supported bridge schema identifier.
 func RuntimeSchemaVersion() string {
 	return runtimeSchemaVersion
+}
+
+// BrainDispatch executes a brain task via the application boundary.
+func (s *Service) BrainDispatch(ctx context.Context, req BrainDispatchRequest) (BrainDispatchResult, error) {
+	if s == nil || s.brain == nil {
+		return BrainDispatchResult{}, errors.New("brain not configured")
+	}
+	return s.brain.Dispatch(ctx, req)
+}
+
+// BrainDispatchStream executes a brain task with streaming callbacks.
+func (s *Service) BrainDispatchStream(ctx context.Context, req BrainDispatchRequest, handler StreamChunkHandler) (BrainDispatchResult, error) {
+	if s == nil || s.brain == nil {
+		return BrainDispatchResult{}, errors.New("brain not configured")
+	}
+	return s.brain.DispatchStream(ctx, req, handler)
 }

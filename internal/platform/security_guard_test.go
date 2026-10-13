@@ -24,6 +24,10 @@ func TestNoUnreviewedRemoteTransport(t *testing.T) {
 	}
 }
 
+var allowlistedNetHTTPImports = map[string]string{
+	"internal/cortex/provider/openai_compat.go": "BAN-131: outbound HTTP client for local 9router provider (reviewed Phase 11)",
+}
+
 func scanTreeForTransport(root string) []string {
 	fset := token.NewFileSet()
 	var violations []string
@@ -37,9 +41,17 @@ func scanTreeForTransport(root string) []string {
 				violations = append(violations, path+": parse error")
 				return nil
 			}
+			rel, err := filepath.Rel(root, path)
+			if err != nil {
+				rel = path
+			}
+			rel = filepath.ToSlash(rel)
 			for _, imp := range node.Imports {
 				if strings.Trim(imp.Path.Value, `"`) == "net/http" {
-					violations = append(violations, path+": imports net/http")
+					// Allowlist for reviewed outbound HTTP clients per BAN-131
+					if _, ok := allowlistedNetHTTPImports[rel]; !ok {
+						violations = append(violations, path+": imports net/http")
+					}
 				}
 			}
 			data, err := os.ReadFile(path)

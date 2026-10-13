@@ -16,6 +16,12 @@ const (
 	EventCockpitRetrievalRebuilt  = "cortexos:cockpit:retrieval:rebuilt"
 )
 
+// Standard Brain runtime event names emitted across the bridge.
+const (
+	EventBrainStreamChunk  = "cortexos:brain:stream:chunk"
+	EventBrainStateChanged = "cortexos:brain:state:changed"
+)
+
 // RuntimeEventHook is a callback function invoked when a bridge runtime event occurs.
 type RuntimeEventHook func(eventName string, payload any)
 

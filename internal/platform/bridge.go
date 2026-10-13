@@ -64,6 +64,30 @@ func (b *Bridge) GetRuntimeSnapshot(request application.SnapshotRequest) (applic
 	return b.service.GetRuntimeSnapshot(b.getContext(), request)
 }
 
+// DispatchBrainTask executes a Brain task through the typed application boundary.
+func (b *Bridge) DispatchBrainTask(request application.BrainDispatchRequest) (application.BrainDispatchResult, error) {
+	result, err := b.service.BrainDispatch(b.getContext(), request)
+	if err == nil && b.emitter != nil {
+		b.emitter.Emit(EventBrainStateChanged, result)
+	}
+	return result, err
+}
+
+// DispatchBrainTaskStream executes a Brain task and emits each stream chunk
+// through the bridge event emitter. The callback remains bounded and synchronous
+// with the brain stream reader; consumers must not block it.
+func (b *Bridge) DispatchBrainTaskStream(request application.BrainDispatchRequest) (application.BrainDispatchResult, error) {
+	result, err := b.service.BrainDispatchStream(b.getContext(), request, func(chunk application.StreamChunk) {
+		if b.emitter != nil {
+			b.emitter.Emit(EventBrainStreamChunk, chunk)
+		}
+	})
+	if b.emitter != nil {
+		b.emitter.Emit(EventBrainStateChanged, result)
+	}
+	return result, err
+}
+
 func (b *Bridge) GetWorkspaceSnapshot(request application.WorkspaceSnapshotRequest) (application.WorkspaceSnapshot, error) {
 	return b.service.GetWorkspaceSnapshot(b.getContext(), request)
 }

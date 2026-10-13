@@ -67,6 +67,22 @@ func NewDispatcher(p application.ProviderPort) (*Dispatcher, error) {
 	return &Dispatcher{provider: p}, nil
 }
 
+// ProviderName returns the name of the underlying provider port.
+func (d *Dispatcher) ProviderName() string {
+	if d == nil || d.provider == nil {
+		return "disabled"
+	}
+	return d.provider.Name()
+}
+
+// Provider returns the underlying ProviderPort.
+func (d *Dispatcher) Provider() application.ProviderPort {
+	if d == nil {
+		return nil
+	}
+	return d.provider
+}
+
 // Dispatch executes the task through the brain session lifecycle.
 func (d *Dispatcher) Dispatch(ctx context.Context, req TaskDispatchRequest) (TaskDispatchResult, error) {
 	if err := req.Validate(); err != nil {
