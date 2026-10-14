@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { FolderOpen, X } from 'lucide-react'
 
 export type ContextSnippet = {
   id: string
@@ -34,7 +35,7 @@ export function ContextInspector({ snippets, isOpen = false, onToggle }: Context
             onClick={onToggle}
             aria-label={isOpen ? 'Collapse context snippets' : 'Expand context snippets'}
           >
-            {isOpen ? '✕' : '📂'}
+            {isOpen ? <X size={14} aria-hidden="true" /> : <FolderOpen size={14} aria-hidden="true" />}
           </button>
         )}
       </div>

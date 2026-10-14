@@ -30,10 +30,9 @@ export function BrainPanel({ bridge = wailsRuntimeBridge, staffId, contextSnippe
   return (
     <section className="brain-panel" aria-labelledby="brain-panel-heading">
       <header className="brain-panel-header">
-        <div>
-          <span className="eyebrow">AgentOS / Brain</span>
+        <div className="tool-heading">
+          <span className="eyebrow">CORTEXOS / BRAIN</span>
           <h1 id="brain-panel-heading">Reasoning cockpit</h1>
-          <p>Dispatch a bounded local reasoning session and inspect its live stream.</p>
         </div>
         <div className={`brain-status ${isRunning ? 'active' : state}`} role="status">
           <span aria-hidden="true" /> {state}
