@@ -75,6 +75,8 @@ var migrations = []string{
 		UNIQUE (staff_id, memory_id),
 		FOREIGN KEY (staff_id) REFERENCES staff_definitions(id) ON DELETE CASCADE
 	);`,
+	`ALTER TABLE staff_definitions ADD COLUMN parent_id TEXT;`,
+	`ALTER TABLE staff_definitions ADD COLUMN profile TEXT NOT NULL DEFAULT '';`,
 }
 
 // SchemaVersion returns the durable Staff SQLite contract version.

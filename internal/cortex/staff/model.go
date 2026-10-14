@@ -94,6 +94,8 @@ type Definition struct {
 	Skills        []SkillReference    `json:"skills"`
 	Memory        []MemoryReference   `json:"memory"`
 	Workspace     WorkspaceAssignment `json:"workspace"`
+	ParentID      *string             `json:"parentId,omitempty"`
+	Profile       string              `json:"profile,omitempty"`
 	Lifecycle     LifecycleState      `json:"lifecycle"`
 	Availability  AvailabilityState   `json:"availability"`
 	CreatedAt     time.Time           `json:"createdAt"`
@@ -187,6 +189,19 @@ func (d Definition) Validate() error {
 	}
 	if err := d.Workspace.Validate(); err != nil {
 		return err
+	}
+	if d.ParentID != nil {
+		if err := validateToken(*d.ParentID, "parent id"); err != nil {
+			return err
+		}
+		if *d.ParentID == string(d.ID) {
+			return newError(ErrInvalidRequest, "parent id must differ from staff id")
+		}
+	}
+	if d.Profile != "" {
+		if err := validateToken(d.Profile, "profile"); err != nil {
+			return err
+		}
 	}
 	if !validLifecycle(d.Lifecycle) {
 		return newError(ErrInvalidRequest, fmt.Sprintf("unsupported lifecycle %q", d.Lifecycle))

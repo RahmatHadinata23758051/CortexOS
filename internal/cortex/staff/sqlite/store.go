@@ -187,18 +187,18 @@ func (s *Store) SaveDefinition(ctx context.Context, definition staff.Definition)
 	defer func() { _ = tx.Rollback() }()
 
 	_, err = tx.ExecContext(ctx, `INSERT INTO staff_definitions
-		(id, name, role, workspace_id, project_id, worktree_id, lifecycle, availability,
+		(id, name, role, workspace_id, project_id, worktree_id, parent_id, profile, lifecycle, availability,
 		created_at, updated_at, schema_version)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(id) DO UPDATE SET name=excluded.name, role=excluded.role,
 		workspace_id=excluded.workspace_id, project_id=excluded.project_id,
-		worktree_id=excluded.worktree_id, lifecycle=excluded.lifecycle,
-		availability=excluded.availability, created_at=excluded.created_at,
+		worktree_id=excluded.worktree_id, parent_id=excluded.parent_id, profile=excluded.profile,
+		lifecycle=excluded.lifecycle, availability=excluded.availability, created_at=excluded.created_at,
 		updated_at=excluded.updated_at, schema_version=excluded.schema_version`,
 		string(definition.ID), definition.Name, string(definition.Role),
 		string(definition.Workspace.WorkspaceID), string(definition.Workspace.ProjectID),
-		string(definition.Workspace.WorktreeID), string(definition.Lifecycle),
-		string(definition.Availability), formatTime(definition.CreatedAt),
+		string(definition.Workspace.WorktreeID), nullableString(definition.ParentID), definition.Profile,
+		string(definition.Lifecycle), string(definition.Availability), formatTime(definition.CreatedAt),
 		formatTime(definition.UpdatedAt), definition.SchemaVersion)
 	if err != nil {
 		return staff.Definition{}, dbError("save staff definition", err)
@@ -253,11 +253,13 @@ func (s *Store) GetDefinition(ctx context.Context, id staff.StaffID) (staff.Defi
 		return staff.Definition{}, err
 	}
 	var d staff.Definition
-	var role, workspaceID, projectID, worktreeID, lifecycle, availability, created, updated string
+	var role, workspaceID, projectID, worktreeID, profile, lifecycle, availability, created, updated string
+	var parentID sql.NullString
 	err := s.db.QueryRowContext(ctx, `SELECT id, name, role, workspace_id, project_id, worktree_id,
-		lifecycle, availability, created_at, updated_at, schema_version
+		parent_id, profile, lifecycle, availability, created_at, updated_at, schema_version
 		FROM staff_definitions WHERE id = ?`, string(id)).Scan(
-		&d.ID, &d.Name, &role, &workspaceID, &projectID, &worktreeID, &lifecycle,
+		&d.ID, &d.Name, &role, &workspaceID, &projectID, &worktreeID,
+		&parentID, &profile, &lifecycle,
 		&availability, &created, &updated, &d.SchemaVersion)
 	if errors.Is(err, sql.ErrNoRows) {
 		return staff.Definition{}, staff.WrapError(staff.ErrNotFound, "staff definition not found", err)
@@ -266,6 +268,11 @@ func (s *Store) GetDefinition(ctx context.Context, id staff.StaffID) (staff.Defi
 		return staff.Definition{}, dbError("get staff definition", err)
 	}
 	d.Role = staff.Role(role)
+	if parentID.Valid {
+		value := parentID.String
+		d.ParentID = &value
+	}
+	d.Profile = profile
 	d.Workspace = staff.WorkspaceAssignment{WorkspaceID: staff.WorkspaceID(workspaceID), ProjectID: staff.ProjectID(projectID), WorktreeID: staff.WorktreeID(worktreeID)}
 	d.Lifecycle = staff.LifecycleState(lifecycle)
 	d.Availability = staff.AvailabilityState(availability)
@@ -485,6 +492,13 @@ func validateID(id staff.StaffID) error {
 		return err
 	}
 	return nil
+}
+
+func nullableString(s *string) sql.NullString {
+	if s == nil {
+		return sql.NullString{Valid: false}
+	}
+	return sql.NullString{String: *s, Valid: true}
 }
 
 func formatTime(t time.Time) string {

@@ -101,12 +101,22 @@ func sanitizeStaffSummary(summary StaffSummary) StaffSummary {
 		WorkspaceID:   summary.WorkspaceID,
 		ProjectID:     summary.ProjectID,
 		WorktreeID:    summary.WorktreeID,
+		ParentID:      cloneStringPointer(summary.ParentID),
+		Profile:       summary.Profile,
 		Lifecycle:     summary.Lifecycle,
 		Availability:  summary.Availability,
 		SchemaVersion: StaffBridgeSchemaVersion,
 		CreatedAt:     summary.CreatedAt,
 		UpdatedAt:     summary.UpdatedAt,
 	}
+}
+
+func cloneStringPointer(value *string) *string {
+	if value == nil {
+		return nil
+	}
+	copy := *value
+	return &copy
 }
 
 func sanitizeStaffCapability(item StaffCapabilitySummary) StaffCapabilitySummary {

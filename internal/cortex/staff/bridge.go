@@ -18,6 +18,8 @@ type Summary struct {
 	WorkspaceID   WorkspaceID       `json:"workspaceId"`
 	ProjectID     ProjectID         `json:"projectId,omitempty"`
 	WorktreeID    WorktreeID        `json:"worktreeId,omitempty"`
+	ParentID      *string           `json:"parentId,omitempty"`
+	Profile       string            `json:"profile,omitempty"`
 	Lifecycle     LifecycleState    `json:"lifecycle"`
 	Availability  AvailabilityState `json:"availability"`
 	SchemaVersion string            `json:"schemaVersion"`
@@ -85,7 +87,8 @@ func (d Definition) Summary() Summary {
 		ID: d.ID, Name: d.Name, Role: d.Role,
 		Capabilities: append([]Capability(nil), d.Capabilities...),
 		WorkspaceID:  d.Workspace.WorkspaceID, ProjectID: d.Workspace.ProjectID,
-		WorktreeID: d.Workspace.WorktreeID, Lifecycle: d.Lifecycle,
+		WorktreeID: d.Workspace.WorktreeID, ParentID: d.ParentID, Profile: d.Profile,
+		Lifecycle:    d.Lifecycle,
 		Availability: d.Availability, SchemaVersion: d.SchemaVersion,
 		CreatedAt: d.CreatedAt, UpdatedAt: d.UpdatedAt,
 	}
@@ -120,6 +123,19 @@ func (s Summary) MarshalJSON() ([]byte, error) {
 	}
 	if s.WorktreeID != "" {
 		if err := validateToken(string(s.WorktreeID), "worktree id"); err != nil {
+			return nil, err
+		}
+	}
+	if s.ParentID != nil {
+		if err := validateToken(*s.ParentID, "parent id"); err != nil {
+			return nil, err
+		}
+		if *s.ParentID == string(s.ID) {
+			return nil, newError(ErrInvalidRequest, "parent id must differ from staff id")
+		}
+	}
+	if s.Profile != "" {
+		if err := validateToken(s.Profile, "profile"); err != nil {
 			return nil, err
 		}
 	}
@@ -192,6 +208,19 @@ func (s *Summary) UnmarshalJSON(data []byte) error {
 	}
 	if s.WorktreeID != "" {
 		if err := validateToken(string(s.WorktreeID), "worktree id"); err != nil {
+			return err
+		}
+	}
+	if s.ParentID != nil {
+		if err := validateToken(*s.ParentID, "parent id"); err != nil {
+			return err
+		}
+		if *s.ParentID == string(s.ID) {
+			return newError(ErrInvalidRequest, "parent id must differ from staff id")
+		}
+	}
+	if s.Profile != "" {
+		if err := validateToken(s.Profile, "profile"); err != nil {
 			return err
 		}
 	}

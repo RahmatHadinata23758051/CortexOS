@@ -147,6 +147,14 @@ func (a *StaffAdapter) GetStaffAssignment(ctx context.Context, id staff.StaffID)
 	}, nil
 }
 
+func staffIDPointer(value *string) *string {
+	if value == nil {
+		return nil
+	}
+	copy := *value
+	return &copy
+}
+
 func toAppStaffSummary(def staff.Definition) application.StaffSummary {
 	return application.StaffSummary{
 		ID:            def.ID,
@@ -156,6 +164,8 @@ func toAppStaffSummary(def staff.Definition) application.StaffSummary {
 		WorkspaceID:   def.Workspace.WorkspaceID,
 		ProjectID:     def.Workspace.ProjectID,
 		WorktreeID:    def.Workspace.WorktreeID,
+		ParentID:      staffIDPointer(def.ParentID),
+		Profile:       def.Profile,
 		Lifecycle:     def.Lifecycle,
 		Availability:  def.Availability,
 		SchemaVersion: application.StaffBridgeSchemaVersion,
@@ -175,6 +185,8 @@ func SeedDefaultStaff(ctx context.Context, store staff.Store) error {
 	}
 
 	now := time.Now().UTC()
+	coordinatorID := "staff-coordinator"
+	plannerID := "staff-planner"
 	defaults := []staff.Definition{
 		{
 			Identity: staff.Identity{ID: "staff-coordinator", Name: "Lead Coordinator"},
@@ -183,6 +195,7 @@ func SeedDefaultStaff(ctx context.Context, store staff.Store) error {
 				staff.Capability("task_plan"), staff.Capability("git"), staff.Capability("search"),
 			},
 			Workspace:     staff.WorkspaceAssignment{WorkspaceID: "default"},
+			Profile:       "default",
 			Lifecycle:     staff.LifecycleActive,
 			Availability:  staff.AvailabilityAvailable,
 			CreatedAt:     now,
@@ -196,6 +209,8 @@ func SeedDefaultStaff(ctx context.Context, store staff.Store) error {
 				staff.Capability("task_plan"), staff.Capability("code_navigation"), staff.Capability("analysis"),
 			},
 			Workspace:     staff.WorkspaceAssignment{WorkspaceID: "default"},
+			ParentID:      &coordinatorID,
+			Profile:       "default",
 			Lifecycle:     staff.LifecycleActive,
 			Availability:  staff.AvailabilityAvailable,
 			CreatedAt:     now,
@@ -210,6 +225,8 @@ func SeedDefaultStaff(ctx context.Context, store staff.Store) error {
 				staff.Capability("file_edit"), staff.Capability("git"), staff.Capability("test_run"), staff.Capability("build"),
 			},
 			Workspace:     staff.WorkspaceAssignment{WorkspaceID: "default"},
+			ParentID:      &plannerID,
+			Profile:       "default",
 			Lifecycle:     staff.LifecycleActive,
 			Availability:  staff.AvailabilityAvailable,
 			CreatedAt:     now,
@@ -224,6 +241,8 @@ func SeedDefaultStaff(ctx context.Context, store staff.Store) error {
 				staff.Capability("lint"), staff.Capability("test_run"),
 			},
 			Workspace:     staff.WorkspaceAssignment{WorkspaceID: "default"},
+			ParentID:      &coordinatorID,
+			Profile:       "default",
 			Lifecycle:     staff.LifecycleActive,
 			Availability:  staff.AvailabilityAvailable,
 			CreatedAt:     now,

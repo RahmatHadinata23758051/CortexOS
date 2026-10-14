@@ -74,7 +74,7 @@ func TestStaffAdapterSeedAndQueries(t *testing.T) {
 	if err != nil {
 		t.Fatalf("get staff-coordinator: %v", err)
 	}
-	if coord.Name != "Lead Coordinator" || coord.Role != staff.RoleCoordinator {
+	if coord.Name != "Lead Coordinator" || coord.Role != staff.RoleCoordinator || coord.ParentID != nil || coord.Profile != "default" {
 		t.Fatalf("unexpected coordinator summary: %+v", coord)
 	}
 
@@ -85,6 +85,25 @@ func TestStaffAdapterSeedAndQueries(t *testing.T) {
 	}
 	if len(planners) != 1 || planners[0].ID != "staff-planner" {
 		t.Fatalf("expected 1 planner, got %v", planners)
+	}
+	if planners[0].ParentID == nil || *planners[0].ParentID != "staff-coordinator" || planners[0].Profile != "default" {
+		t.Fatalf("unexpected planner hierarchy: %+v", planners[0])
+	}
+
+	impl, err := adapter.GetStaff(ctx, "staff-implementer")
+	if err != nil {
+		t.Fatalf("get staff-implementer: %v", err)
+	}
+	if impl.ParentID == nil || *impl.ParentID != "staff-planner" || impl.Profile != "default" {
+		t.Fatalf("unexpected implementer hierarchy: %+v", impl)
+	}
+
+	rev, err := adapter.GetStaff(ctx, "staff-reviewer")
+	if err != nil {
+		t.Fatalf("get staff-reviewer: %v", err)
+	}
+	if rev.ParentID == nil || *rev.ParentID != "staff-coordinator" || rev.Profile != "default" {
+		t.Fatalf("unexpected reviewer hierarchy: %+v", rev)
 	}
 
 	// 5. List by workspace

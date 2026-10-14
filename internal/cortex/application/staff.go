@@ -39,6 +39,8 @@ type StaffSummary struct {
 	WorkspaceID   staff.WorkspaceID       `json:"workspaceId"`
 	ProjectID     staff.ProjectID         `json:"projectId,omitempty"`
 	WorktreeID    staff.WorktreeID        `json:"worktreeId,omitempty"`
+	ParentID      *string                 `json:"parentId,omitempty"`
+	Profile       string                  `json:"profile,omitempty"`
 	Lifecycle     staff.LifecycleState    `json:"lifecycle"`
 	Availability  staff.AvailabilityState `json:"availability"`
 	SchemaVersion string                  `json:"schemaVersion"`

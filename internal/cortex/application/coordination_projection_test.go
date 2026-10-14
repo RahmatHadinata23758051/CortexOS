@@ -2,6 +2,7 @@ package application
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"testing"
 	"time"
@@ -149,5 +150,59 @@ func TestCoordinationProjectionCanceledContext(t *testing.T) {
 	_, err := projection.Refresh(ctx, CoordinationSnapshotRequest{SchemaVersion: CoordinationSchemaVersion})
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("expected context.Canceled, got %v", err)
+	}
+}
+
+func TestCloneCoordinationSnapshotPreservesJSONArrays(t *testing.T) {
+	snapshot := cloneCoordinationSnapshot(CoordinationSnapshot{
+		SchemaVersion: CoordinationSchemaVersion,
+		Tasks:         []CoordinationTask{{ID: "task", Dependencies: []string{}}},
+		Assignments:   []StaffAssignmentStatus{},
+	})
+
+	encoded, err := json.Marshal(snapshot)
+	if err != nil {
+		t.Fatalf("marshal snapshot: %v", err)
+	}
+	var payload struct {
+		Tasks       json.RawMessage `json:"tasks"`
+		Assignments json.RawMessage `json:"assignments"`
+	}
+	if err := json.Unmarshal(encoded, &payload); err != nil {
+		t.Fatalf("unmarshal snapshot: %v", err)
+	}
+	if string(payload.Assignments) != "[]" {
+		t.Fatalf("expected assignments to marshal as [], got %s", payload.Assignments)
+	}
+	var tasks []struct {
+		Dependencies []string `json:"dependencies"`
+	}
+	if err := json.Unmarshal(payload.Tasks, &tasks); err != nil {
+		t.Fatalf("unmarshal tasks: %v", err)
+	}
+	if len(tasks) != 1 || tasks[0].Dependencies == nil {
+		t.Fatalf("expected one task with dependencies as [], got %s", payload.Tasks)
+	}
+}
+
+func TestCloneCoordinationSnapshotEmptyArraysMarshalAsArrays(t *testing.T) {
+	snapshot := cloneCoordinationSnapshot(CoordinationSnapshot{
+		SchemaVersion: CoordinationSchemaVersion,
+		Tasks:         []CoordinationTask{},
+		Assignments:   []StaffAssignmentStatus{},
+	})
+	encoded, err := json.Marshal(snapshot)
+	if err != nil {
+		t.Fatalf("marshal snapshot: %v", err)
+	}
+	var payload struct {
+		Tasks       json.RawMessage `json:"tasks"`
+		Assignments json.RawMessage `json:"assignments"`
+	}
+	if err := json.Unmarshal(encoded, &payload); err != nil {
+		t.Fatalf("unmarshal snapshot: %v", err)
+	}
+	if string(payload.Tasks) != "[]" || string(payload.Assignments) != "[]" {
+		t.Fatalf("expected empty arrays, got tasks=%s assignments=%s", payload.Tasks, payload.Assignments)
 	}
 }

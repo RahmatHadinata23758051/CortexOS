@@ -300,10 +300,13 @@ func coordinationStaffState(task CoordinationTask) string {
 
 func cloneCoordinationSnapshot(snapshot CoordinationSnapshot) CoordinationSnapshot {
 	clone := snapshot
-	clone.Tasks = append([]CoordinationTask(nil), snapshot.Tasks...)
+	clone.Tasks = make([]CoordinationTask, len(snapshot.Tasks))
+	copy(clone.Tasks, snapshot.Tasks)
 	for i := range clone.Tasks {
-		clone.Tasks[i].Dependencies = append([]string(nil), snapshot.Tasks[i].Dependencies...)
+		clone.Tasks[i].Dependencies = make([]string, len(snapshot.Tasks[i].Dependencies))
+		copy(clone.Tasks[i].Dependencies, snapshot.Tasks[i].Dependencies)
 	}
-	clone.Assignments = append([]StaffAssignmentStatus(nil), snapshot.Assignments...)
+	clone.Assignments = make([]StaffAssignmentStatus, len(snapshot.Assignments))
+	copy(clone.Assignments, snapshot.Assignments)
 	return clone
 }
