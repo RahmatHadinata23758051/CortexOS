@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-
+import { RefreshCw, X } from 'lucide-react'
 import { loadOrchestraTasks, cancelOrchestraTask, getOrchestraTask, retryOrchestraTask } from '../bridge/orchestra'
 import { onOrchestraTaskChanged } from '../bridge/orchestra-events'
 import { type OrchestraBridge, type OrchestraTaskDetail, type OrchestraTaskStatus, type OrchestraTaskSummary } from '../types/orchestra'
@@ -75,14 +75,17 @@ export function TaskBoard({ bridge, commands = {} }: { bridge: OrchestraBridge; 
   }
 
   return <section className="task-board reveal-1" aria-labelledby="task-board-title">
-    <div className="task-board-heading">
-      <div><span className="eyebrow">CORTEXOS / ORCHESTRA</span><h1 id="task-board-title">Task board<br /><i>facts in motion.</i></h1><p className="lede">A read-only view of Orchestra lifecycle state. Inspector and Orchestra remain the only authorities for transitions.</p></div>
-      <div className="task-board-contract"><span>CONTRACT</span><strong>orchestra.bridge.v1</strong><small>typed boundary</small></div>
-    </div>
+    <header className="task-board-heading">
+      <div className="tool-heading"><span className="eyebrow">CORTEXOS / ORCHESTRA</span><h1 id="task-board-title">Task board</h1></div>
+      <div className="task-board-contract"><span>CONTRACT</span><strong>orchestra.bridge.v1</strong></div>
+    </header>
     <div className="task-board-toolbar" role="search">
       <label className="task-search"><span className="sr-only">Search tasks</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search task or project…" /></label>
       <label className="task-filter"><span className="sr-only">Filter task status</span><select value={filter} onChange={(event) => setFilter(event.target.value as Filter)}><option value="all">All states</option>{columns.map((column) => <option value={column.status} key={column.status}>{column.label}</option>)}</select></label>
-      <button className="task-refresh" type="button" onClick={refresh} disabled={state.status === 'loading'}>{state.status === 'loading' ? 'Reading…' : 'Refresh'} ↻</button>
+      <button className="task-refresh" type="button" onClick={refresh} disabled={state.status === 'loading'}>
+        <RefreshCw size={13} className={state.status === 'loading' ? 'spin' : ''} aria-hidden="true" />
+        <span>{state.status === 'loading' ? 'Reading…' : 'Refresh'}</span>
+      </button>
     </div>
     {commandError && <div className="task-error" role="alert">{commandError}</div>}
     {state.status === 'error' && <div className="task-empty" role="alert"><strong>{state.code}</strong><p>{state.message}</p><button type="button" onClick={refresh}>Retry</button></div>}
@@ -104,5 +107,5 @@ export function TaskCard({ task, selected, busy, onInspect, onCancel, onRetry, o
 }
 
 export function TaskDetail({ task, detail, onClose }: { task: OrchestraTaskSummary; detail: OrchestraTaskDetail | null; onClose: () => void }) {
-  return <aside className="task-detail" aria-label={`Inspection detail for ${task.id}`}><div className="task-detail-heading"><div><span className="eyebrow">INSPECTOR READOUT</span><h2>{task.id}</h2></div><button type="button" onClick={onClose} aria-label="Close task detail">×</button></div>{!detail ? <p className="task-loading">Loading bounded detail…</p> : <><dl><div><dt>State</dt><dd>{detail.status}</dd></div><div><dt>Evidence</dt><dd>{detail.evidence.length} references</dd></div><div><dt>Acceptance</dt><dd>{detail.acceptanceCount} criteria</dd></div><div><dt>Dependencies</dt><dd>{detail.dependencyCount}</dd></div></dl><h3>Timeline</h3><ol className="task-timeline">{detail.timeline.map((event) => <li key={event.sequence}><strong>{event.type}</strong><span>{event.from ?? '—'} → {event.to ?? '—'}</span></li>)}</ol></>}</aside>
+  return <aside className="task-detail" aria-label={`Inspection detail for ${task.id}`}><div className="task-detail-heading"><div><span className="eyebrow">INSPECTOR READOUT</span><h2>{task.id}</h2></div><button type="button" onClick={onClose} aria-label="Close task detail"><X size={16} aria-hidden="true" /></button></div>{!detail ? <p className="task-loading">Loading bounded detail…</p> : <><dl><div><dt>State</dt><dd>{detail.status}</dd></div><div><dt>Evidence</dt><dd>{detail.evidence.length} references</dd></div><div><dt>Acceptance</dt><dd>{detail.acceptanceCount} criteria</dd></div><div><dt>Dependencies</dt><dd>{detail.dependencyCount}</dd></div></dl><h3>Timeline</h3><ol className="task-timeline">{detail.timeline.map((event) => <li key={event.sequence}><strong>{event.type}</strong><span>{event.from ?? '—'} → {event.to ?? '—'}</span></li>)}</ol></>}</aside>
 }

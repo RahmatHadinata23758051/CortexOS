@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react'
+import { X, AlertTriangle } from 'lucide-react'
 import type { CoordinationSnapshot, CoordinationTask, StaffAssignmentStatus } from '../types/coordination'
 
 export interface OrchestrationGraphProps {
@@ -232,12 +233,12 @@ export function OrchestrationGraph({
           >
             <defs>
               <linearGradient id="edge-running" x1="0%" y1="0%" x2="100%" y2="0%">
-                <stop offset="0%" stopColor="#8faeff" stopOpacity="0.8" />
-                <stop offset="100%" stopColor="#d7f158" stopOpacity="0.9" />
+                <stop offset="0%" stopColor="var(--accent-cool)" stopOpacity="0.8" />
+                <stop offset="100%" stopColor="var(--accent-warm)" stopOpacity="0.9" />
               </linearGradient>
               <linearGradient id="edge-complete" x1="0%" y1="0%" x2="100%" y2="0%">
-                <stop offset="0%" stopColor="#88bf48" stopOpacity="0.4" />
-                <stop offset="100%" stopColor="#88bf48" stopOpacity="0.7" />
+                <stop offset="0%" stopColor="var(--status-success)" stopOpacity="0.4" />
+                <stop offset="100%" stopColor="var(--status-success)" stopOpacity="0.7" />
               </linearGradient>
             </defs>
 
@@ -245,14 +246,14 @@ export function OrchestrationGraph({
               const isHighlighted =
                 selectedTaskId && (edge.fromId === selectedTaskId || edge.toId === selectedTaskId)
 
-              let stroke = '#324152'
+              let stroke = 'var(--border-strong)'
               let strokeClass = 'edge-idle'
 
               if (edge.isActive) {
                 stroke = 'url(#edge-running)'
                 strokeClass = 'edge-active'
               } else if (edge.isBlocked) {
-                stroke = '#e0b54d'
+                stroke = 'var(--status-warning)'
                 strokeClass = 'edge-blocked'
               } else if (edge.isCompleted) {
                 stroke = 'url(#edge-complete)'
@@ -272,6 +273,12 @@ export function OrchestrationGraph({
                     stroke={stroke}
                     strokeWidth={isHighlighted ? 3 : 1.5}
                     fill="none"
+                  />
+                  <circle
+                    className={`edge-junction ${strokeClass}`}
+                    cx={edge.path.match(/M\s*([\d.]+)\s+([\d.]+)/)?.[1] ?? 0}
+                    cy={edge.path.match(/M\s*([\d.]+)\s+([\d.]+)/)?.[2] ?? 0}
+                    r={isHighlighted ? 3 : 2}
                   />
                 </g>
               )
@@ -330,7 +337,7 @@ export function OrchestrationGraph({
                   {/* Blocked Alert Banner if blocked */}
                   {task.isBlocked && (
                     <div className="node-blocked-reason" title={task.blockedReason || 'Awaiting dependency'}>
-                      <span aria-hidden="true">⚠</span> {task.blockedReason || 'Blocked by upstream'}
+                      <AlertTriangle size={12} aria-hidden="true" /> {task.blockedReason || 'Blocked by upstream'}
                     </div>
                   )}
 
@@ -386,7 +393,7 @@ export function OrchestrationGraph({
               onClick={() => setSelectedTaskId(null)}
               aria-label="Close inspector drawer"
             >
-              ✕
+              <X size={15} aria-hidden="true" />
             </button>
           </div>
 
