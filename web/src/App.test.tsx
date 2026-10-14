@@ -56,10 +56,17 @@ describe('App shell', () => {
     expect(markup).toContain('aria-label')
   })
 
-  it('renders route placeholder content for non-workspace routes', () => {
+  it('renders the activity audit stream on activity route', () => {
     const markup = renderToStaticMarkup(<App initialRoute="activity" />)
     expect(markup).toContain('Activity')
-    expect(markup).toContain('Coming soon')
+    expect(markup).toContain('CORTEXOS / AUDIT STREAM')
+    expect(markup).toContain('Filter activity')
+  })
+
+  it('renders the settings and diagnostics view on settings route', () => {
+    const markup = renderToStaticMarkup(<App initialRoute="settings" />)
+    expect(markup).toContain('Settings &amp; Diagnostics')
+    expect(markup).toContain('Runtime Diagnostics')
   })
 
   it('renders the task board on operations route', () => {

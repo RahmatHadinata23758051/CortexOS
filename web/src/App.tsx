@@ -11,6 +11,8 @@ import { StaffPanel } from './staff/StaffPanel'
 import { TerminalPanel } from './components/terminal/TerminalPanel'
 import { BrainPanel } from './components/brain/BrainPanel'
 import { ApprovalDrawer } from './office/ApprovalDrawer'
+import { ActivityView } from './activity/ActivityView'
+import { SettingsView } from './settings/SettingsView'
 
 export type ProjectFormState = {
   id: string
@@ -262,7 +264,7 @@ export function App({ initialRoute, initialTheme }: AppProps = {}) {
             <header className="section-heading"><div className="tool-heading"><span className="eyebrow">CORTEXOS / OFFICE</span><h1>Virtual office</h1></div></header>
             <Suspense fallback={<div className="empty-card" role="status">Loading virtual office…</div>}><OfficeView /></Suspense>
           </div>
-        ) : route === 'knowledge' ? <KnowledgeView /> : route === 'staff' ? <StaffPanel /> : route === 'brain' ? <BrainPanel /> : <RoutePlaceholder route={route} />}
+        ) : route === 'activity' ? <ActivityView /> : route === 'settings' ? <SettingsView theme={theme} onThemeChange={setTheme} runtime={runtime} workspace={workspace} /> : route === 'knowledge' ? <KnowledgeView /> : route === 'staff' ? <StaffPanel /> : route === 'brain' ? <BrainPanel /> : <RoutePlaceholder route={route} />}
       </main>
     </div>
     <ApprovalDrawer isOpen={approvalDrawerOpen} onClose={() => setApprovalDrawerOpen(false)} />
