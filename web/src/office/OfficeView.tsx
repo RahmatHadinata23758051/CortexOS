@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, useCallback, type ReactNode } from 'react'
+import { BrainCircuit, FolderKanban, UsersRound, X } from 'lucide-react'
 import { useBrainDispatch } from '../hooks/useBrainDispatch'
 import { type StaffSummary, type StaffBrainState, type OfficeActivityEvent, type TerminalOverlayState } from '../types/office'
 import { type CoordinationSnapshot, type StaffAssignmentStatus } from '../types/coordination'
@@ -102,10 +103,13 @@ function TerminalOverlay({ state, onClose, onAskBrain }: { state: TerminalOverla
         <div className="terminal-actions">
           {onAskBrain && state.staffId && (
             <button className="ask-brain-button" onClick={() => onAskBrain(state.staffId!)} aria-label={`Ask Brain with ${state.staffId}`}>
-              🧠 Ask Brain
+              <BrainCircuit size={14} aria-hidden="true" />
+              <span>Ask Brain</span>
             </button>
           )}
-          <button className="terminal-close" onClick={onClose} aria-label="Close terminal">✕</button>
+          <button className="terminal-close" onClick={onClose} aria-label="Close terminal">
+            <X size={14} aria-hidden="true" />
+          </button>
         </div>
       </header>
       <pre className="terminal-body" aria-live="polite">
@@ -236,10 +240,12 @@ export function OfficeView({ className = '' }: OfficeViewProps): ReactNode {
       <ReadOnlyBanner />
       <div className="office-mode-switcher" role="tablist" aria-label="Office presentation mode">
         <button type="button" className={viewMode === 'graph' ? 'active' : ''} onClick={() => setViewMode('graph')} role="tab" aria-selected={viewMode === 'graph'}>
-          <span aria-hidden="true">⌘</span> Orchestration graph
+          <FolderKanban size={14} aria-hidden="true" />
+          <span>Orchestration graph</span>
         </button>
         <button type="button" className={viewMode === 'office' ? 'active' : ''} onClick={() => setViewMode('office')} role="tab" aria-selected={viewMode === 'office'}>
-          <span aria-hidden="true">□</span> Virtual office
+          <UsersRound size={14} aria-hidden="true" />
+          <span>Virtual office</span>
         </button>
       </div>
       {coordination.status === 'success' && viewMode === 'graph' ? (

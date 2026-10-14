@@ -1,4 +1,5 @@
 import { useEffect, useState, type FormEvent, type ChangeEvent } from 'react'
+import { Check, Database, FileText, Folder, RefreshCw } from 'lucide-react'
 import { type KnowledgeSource, type KnowledgeResult, type KnowledgeState } from '../types'
 import { loadKnowledgeSources, queryKnowledge, onKnowledgeSourcesChanged, onKnowledgeRetrievalChanged } from '../bridge/knowledge'
 import { wailsRuntimeBridge } from '../types'
@@ -45,7 +46,7 @@ export function KnowledgeView({ initialRoute = 'browser' }: KnowledgeViewProps =
   return (
     <div className="knowledge-section reveal-1">
       <div className="section-heading">
-        <div><span className="eyebrow">CORTEXOS / KNOWLEDGE</span><h2>Vault knowledge browser</h2></div>
+        <div className="tool-heading"><span className="eyebrow">CORTEXOS / KNOWLEDGE</span><h1>Knowledge</h1></div>
         <span className="section-index">01 / 01</span>
       </div>
 
@@ -70,11 +71,11 @@ export function KnowledgeView({ initialRoute = 'browser' }: KnowledgeViewProps =
 }
 
 function KnowledgeBrowser({ sources, projectId }: { sources: KnowledgeState<KnowledgeSource>; projectId: string }) {
-  if (!projectId) return <div className="knowledge-empty"><span className="empty-glyph" aria-hidden="true">◈</span><div><strong>Choose a project</strong><p>Enter a project ID from the toolbar to browse its knowledge sources.</p></div></div>
+  if (!projectId) return <div className="knowledge-empty"><Database size={24} aria-hidden="true" /><div><strong>Choose a project</strong><p>Enter a project ID from the toolbar to browse its knowledge sources.</p></div></div>
   if (sources.status === 'loading') return <div className="knowledge-empty skeleton">Loading knowledge sources…</div>
   if (sources.status === 'error') return <div className="knowledge-error" role="alert"><strong>{sources.code}</strong><span>{sources.message}</span></div>
   if (sources.status === 'idle') return <div className="knowledge-empty"><strong>Choose a project</strong></div>
-  if (sources.items.length === 0) return <div className="knowledge-empty"><span className="empty-glyph" aria-hidden="true">∅</span><div><strong>No knowledge sources</strong><p>Run ingestion to populate the knowledge vault.</p></div></div>
+  if (sources.items.length === 0) return <div className="knowledge-empty"><Database size={24} aria-hidden="true" className="text-muted" /><div><strong>No knowledge sources</strong><p>Run ingestion to populate the knowledge vault.</p></div></div>
 
   const grouped: Record<string, KnowledgeSource[]> = sources.items.reduce((acc: Record<string, KnowledgeSource[]>, source: KnowledgeSource) => {
     const dir = source.relativePath.split('/')[0] || 'root'
@@ -88,14 +89,14 @@ function KnowledgeBrowser({ sources, projectId }: { sources: KnowledgeState<Know
       {Object.entries(grouped).map(([dir, items]: [string, KnowledgeSource[]]) => (
         <details key={dir} className="knowledge-dir" open>
           <summary className="knowledge-dir-summary">
-            <span className="dir-icon" aria-hidden="true">📁</span>
+            <Folder size={14} aria-hidden="true" />
             <span className="dir-name">{dir}</span>
             <span className="dir-count">{items.length}</span>
           </summary>
           <ul className="knowledge-files">
             {items.map((source: KnowledgeSource) => (
               <li key={source.id} className="knowledge-file" data-status={source.status}>
-                <span className="file-icon" aria-hidden="true">📄</span>
+                <FileText size={14} aria-hidden="true" />
                 <span className="file-name">{source.title || source.relativePath}</span>
                 <span className="file-meta">{source.relativePath}</span>
                 <span className={`file-status ${source.status.toLowerCase()}`}>{source.status}</span>
@@ -173,9 +174,10 @@ function IngestionStatus({ status }: { status: { status: string; progress: numbe
 }
 
 function IngestionStep({ label, state, detail }: { label: string; state: 'complete' | 'pending' | 'active'; detail: string }) {
+  const icon = state === 'complete' ? <Check size={14} className="text-success" /> : state === 'active' ? <RefreshCw size={14} className="text-accent spin" /> : <span className="text-muted" aria-hidden="true">○</span>
   return (
     <div className={`ingestion-step ${state}`}>
-      <span className="step-icon" aria-hidden="true">{state === 'complete' ? '✓' : state === 'active' ? '⟳' : '○'}</span>
+      <span className="step-icon" aria-hidden="true">{icon}</span>
       <div className="step-info">
         <strong>{label}</strong>
         <span>{detail}</span>

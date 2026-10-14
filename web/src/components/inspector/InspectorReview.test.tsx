@@ -53,9 +53,9 @@ describe('InspectorReview component', () => {
       <InspectorReview task={sampleTask} detail={sampleDetail} />,
     )
     expect(markup).toContain('CORTEXOS / INSPECTOR')
-    expect(markup).toContain('Review the evidence.')
+    expect(markup).toContain('Inspector Review')
     expect(markup).toContain('ADR-0005')
-    expect(markup).toContain('Inspector → Orchestra')
+    expect(markup).toContain('AUTHORITY')
     expect(markup).toContain('task-ban-121')
     expect(markup).toContain('MERGE GATE: LOCKED')
   })

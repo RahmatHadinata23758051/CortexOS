@@ -1,4 +1,5 @@
 import { useMemo } from 'react'
+import { AlertTriangle, Square } from 'lucide-react'
 import type { BrainState } from '../../types'
 
 export type ReasoningTimelineProps = {
@@ -67,14 +68,14 @@ export function ReasoningTimeline({ state, steps, tokens, durationMs }: Reasonin
 
       {state === 'failed' && (
         <div className="timeline-error" role="alert">
-          <span className="error-icon" aria-hidden="true">⚠</span>
+          <AlertTriangle size={14} className="error-icon" aria-hidden="true" />
           <span>Reasoning failed — check stream for details</span>
         </div>
       )}
 
       {state === 'canceled' && (
         <div className="timeline-canceled" role="status">
-          <span className="cancel-icon" aria-hidden="true">⏹</span>
+          <Square size={14} className="cancel-icon" aria-hidden="true" />
           <span>Reasoning canceled by user</span>
         </div>
       )}

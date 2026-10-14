@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useCallback } from 'react'
+import { RefreshCw, UserCheck } from 'lucide-react'
 import { type StaffSummary, type StaffStatus } from './types'
 import { createStaffBridgeAPI, type StaffAPI } from './api'
 import { StaffList } from './StaffList'
@@ -13,7 +14,6 @@ export function StaffPanel({ api: propApi }: StaffPanelProps = {}) {
   const [status, setStatus] = useState<StaffStatus>('loading')
   const [staff, setStaff] = useState<StaffSummary[]>([])
   const [selectedStaff, setSelectedStaff] = useState<StaffSummary | undefined>(undefined)
-  const [formMode, setFormMode] = useState<'create' | 'edit'>('create')
   const [error, setError] = useState<string | undefined>(undefined)
 
   const loadStaff = useCallback(async () => {
@@ -41,7 +41,6 @@ export function StaffPanel({ api: propApi }: StaffPanelProps = {}) {
       return
     }
     setSelectedStaff(result.summary)
-    setFormMode('edit')
   }
 
   const roleLabels: Record<StaffSummary['role'], string> = {
@@ -53,128 +52,107 @@ export function StaffPanel({ api: propApi }: StaffPanelProps = {}) {
   }
 
   const availabilityColors: Record<StaffSummary['availability'], string> = {
-    available: '#d7f158',
-    busy: '#ff806d',
-    unavailable: '#e0b54d',
-    offline: '#89939c',
+    available: 'var(--ok)',
+    busy: 'var(--err)',
+    unavailable: 'var(--warn)',
+    offline: 'var(--text-faint)',
   }
 
   return (
     <div className="staff-panel">
-      <div className="staff-panel-header">
-        <h2>Staff Management</h2>
-        <span className="staff-panel-subtitle">Logical Staff observability — bridge contracts only</span>
-      </div>
+      <header className="staff-panel-header tool-heading">
+        <span className="eyebrow">CORTEXOS / STAFF</span>
+        <h1>Staff</h1>
+      </header>
 
       <div className="staff-panel-toolbar">
+        <p className="staff-panel-description">Directory and assignment state from the connected runtime.</p>
         <button
           type="button"
-          className="btn-toolbar-create"
-          onClick={() => {
-            setSelectedStaff(undefined)
-            setFormMode('create')
-          }}
+          className="btn-toolbar-refresh"
+          onClick={() => void loadStaff()}
+          disabled={status === 'loading'}
+          aria-label="Refresh staff roster"
         >
-          + Add Staff
+          <RefreshCw size={13} className={status === 'loading' ? 'spin' : ''} aria-hidden="true" />
+          <span>Refresh</span>
         </button>
-        {selectedStaff && (
-          <button
-            type="button"
-            className="btn-toolbar-detail"
-            onClick={() => setFormMode('edit')}
-          >
-            Detail
-          </button>
-        )}
       </div>
 
       <div className="staff-panel-content">
-        {formMode === 'create' || formMode === 'edit' ? (
-          <StaffForm
-            mode={formMode}
-            initial={selectedStaff}
-            onSubmit={() => {
-              setError('Staff mutations are not permitted from presentation layer (observability-only bridge).')
-            }}
-            onCancel={() => {
-              setSelectedStaff(undefined)
-              setFormMode('create')
-            }}
-            loading={status === 'loading'}
-            error={error}
-          />
-        ) : null}
-
-        <div className="staff-panel-main">
+        <section className="staff-panel-main" aria-labelledby="staff-roster-title">
+          <header className="staff-section-header">
+            <h2 id="staff-roster-title">Roster</h2>
+            <span>{staff.length} members</span>
+          </header>
           <StaffList
             staff={staff}
             selectedId={selectedStaff?.id}
             onSelect={handleSelect}
-            onEdit={(id) => void handleSelect(id)}
-            onAvailabilityChange={() => {
-              setError('Staff availability mutation is not permitted from presentation layer.')
-            }}
             loading={status === 'loading'}
             error={error}
           />
+        </section>
+
+        <div className="staff-form-column">
+          {selectedStaff ? (
+            <>
+              <StaffForm
+                mode="edit"
+                initial={selectedStaff}
+                onCancel={() => setSelectedStaff(undefined)}
+                loading={status === 'loading'}
+              />
+
+              <div className="staff-panel-detail">
+                <h3>Staff Detail: {selectedStaff.name}</h3>
+                <div className="detail-grid">
+                  <div className="detail-item">
+                    <strong>Name:</strong> {selectedStaff.name}
+                  </div>
+                  <div className="detail-item">
+                    <strong>Role:</strong> {roleLabels[selectedStaff.role]}
+                  </div>
+                  <div className="detail-item">
+                    <strong>Availability:</strong>{' '}
+                    <span
+                      className="availability-dot"
+                      style={{ color: availabilityColors[selectedStaff.availability] }}
+                      aria-hidden="true"
+                    />{' '}
+                    {selectedStaff.availability}
+                  </div>
+                  <div className="detail-item">
+                    <strong>Workspace:</strong> {selectedStaff.workspaceId}
+                  </div>
+                  <div className="detail-item">
+                    <strong>Project:</strong> {selectedStaff.projectId || '—'}
+                  </div>
+                  <div className="detail-item">
+                    <strong>Lifecycle:</strong> {selectedStaff.lifecycle}
+                  </div>
+                  <div className="detail-item">
+                    <strong>Capabilities:</strong> {selectedStaff.capabilities.join(', ') || '—'}
+                  </div>
+                </div>
+
+                <div className="detail-section">
+                  <h4>Skill Injection</h4>
+                  <p>Skill injection is not exposed by the current bridge contract (read-only Staff observability).</p>
+                </div>
+              </div>
+            </>
+          ) : (
+            <div className="staff-inspector-placeholder">
+              <UserCheck size={28} className="placeholder-icon" aria-hidden="true" />
+              <h3>Staff Inspector</h3>
+              <p>Select a staff member from the roster to inspect runtime state, assignments, and capabilities.</p>
+              <div className="observability-badge-row">
+                <span className="staff-readonly-badge">Observability Bridge</span>
+              </div>
+            </div>
+          )}
         </div>
-
-        {selectedStaff && formMode === 'edit' && staff.length > 0 && (
-          <div className="staff-panel-detail">
-            <h3>Staff Detail: {selectedStaff.name}</h3>
-            <div className="detail-grid">
-              <div className="detail-item">
-                <strong>Name:</strong> {selectedStaff.name}
-              </div>
-              <div className="detail-item">
-                <strong>Role:</strong> {roleLabels[selectedStaff.role]}
-              </div>
-              <div className="detail-item">
-                <strong>Availability:</strong>{' '}
-                <span
-                  className="availability-dot"
-                  style={{ color: availabilityColors[selectedStaff.availability] }}
-                  aria-hidden="true"
-                />{' '}
-                {selectedStaff.availability}
-              </div>
-              <div className="detail-item">
-                <strong>Workspace:</strong> {selectedStaff.workspaceId}
-              </div>
-              <div className="detail-item">
-                <strong>Project:</strong> {selectedStaff.projectId || '—'}
-              </div>
-              <div className="detail-item">
-                <strong>Lifecycle:</strong> {selectedStaff.lifecycle}
-              </div>
-              <div className="detail-item">
-                <strong>Capabilities:</strong> {selectedStaff.capabilities.join(', ') || '—'}
-              </div>
-            </div>
-
-            <div className="detail-section">
-              <h4>Skill Injection</h4>
-              <p>Skill injection is not exposed by the current bridge contract (read-only Staff observability).</p>
-            </div>
-
-            <button
-              type="button"
-              className="btn-close-detail"
-              onClick={() => {
-                setSelectedStaff(undefined)
-                setFormMode('create')
-              }}
-            >
-              Close
-            </button>
-          </div>
-        )}
-
-        {!selectedStaff && staff.length === 0 && formMode === 'create' && (
-          <div className="staff-empty-hint">
-            <p>No staff definitions found in this workspace.</p>
-          </div>
-        )}
       </div>
     </div>
   )

@@ -5,7 +5,7 @@ import { KnowledgeView } from './KnowledgeView'
 describe('KnowledgeView', () => {
   it('renders knowledge section with tabs', () => {
     const markup = renderToStaticMarkup(<KnowledgeView />)
-    expect(markup).toContain('Vault knowledge browser')
+    expect(markup).toContain('Knowledge')
     expect(markup).toContain('Browser')
     expect(markup).toContain('Search')
     expect(markup).toContain('Ingestion')
