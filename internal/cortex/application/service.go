@@ -242,6 +242,13 @@ func (s *Service) RouteBrainTaskToOrchestra(ctx context.Context, req BrainOrches
 }
 
 // SetKnowledge attaches the safe Knowledge application port.
+// SetStaff attaches the Staff observability port.
+func (s *Service) SetStaff(port StaffPort) {
+	if s != nil {
+		s.staff = port
+	}
+}
+
 func (s *Service) SetKnowledge(port KnowledgePort) {
 	if s != nil {
 		s.knowledge = port

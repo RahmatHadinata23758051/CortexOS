@@ -17,6 +17,8 @@ import (
 	"github.com/RahmatHadinata23758051/CortexOS/internal/cortex/orchestra"
 	orchestrasqlite "github.com/RahmatHadinata23758051/CortexOS/internal/cortex/orchestra/sqlite"
 	"github.com/RahmatHadinata23758051/CortexOS/internal/cortex/provider"
+	"github.com/RahmatHadinata23758051/CortexOS/internal/cortex/staff"
+	staffsqlite "github.com/RahmatHadinata23758051/CortexOS/internal/cortex/staff/sqlite"
 	"github.com/RahmatHadinata23758051/CortexOS/internal/cortex/workspace"
 	workspacegit "github.com/RahmatHadinata23758051/CortexOS/internal/cortex/workspace/git"
 	"github.com/RahmatHadinata23758051/CortexOS/internal/cortex/workspace/retrieval"
@@ -208,7 +210,21 @@ func Run() error {
 		brainPort = brainAdapter
 	}
 
+	staffStore, err := staffsqlite.Open(ctx, filepath.Join(canonicalRoot, "state", "staff.db"))
+	if err != nil {
+		return err
+	}
+	defer func() { _ = staffStore.Close() }()
+	if err := bridge.SeedDefaultStaff(ctx, staffStore); err != nil {
+		return err
+	}
+	staffPort, err := bridge.NewStaffAdapter(bridge.StaffAdapterConfig{Store: staffStore, Registry: staff.DefaultCapabilityRegistry()})
+	if err != nil {
+		return err
+	}
+
 	service := application.NewServiceWithWorkspaceAndOrchestraAndProviderAndBrain(workspaceService, orchestraPort, providerPort, brainPort)
+	service.SetStaff(staffPort)
 	knowledgePort, err := bridge.NewWorkspaceKnowledgeAdapter(workspaceService)
 	if err != nil {
 		return err
@@ -283,6 +299,7 @@ func Run() error {
 	if orchestraPort != nil {
 		source, err := bridge.NewCoordinationSourceAdapter(bridge.CoordinationSourceConfig{
 			Orchestra: orchestraPort,
+			Staff:     staffPort,
 		})
 		if err == nil {
 			projection := application.NewCoordinationProjection(source)
