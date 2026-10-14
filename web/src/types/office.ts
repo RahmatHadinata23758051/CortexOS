@@ -15,6 +15,8 @@ export type StaffSummary = {
   worktreeId?: string
   lifecycle: 'active' | 'inactive' | 'retired'
   availability: 'available' | 'busy' | 'unavailable' | 'offline'
+  parentId?: string | null
+  profile?: string
   schemaVersion: string
 }
 

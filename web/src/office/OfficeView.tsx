@@ -251,6 +251,7 @@ export function OfficeView({ className = '' }: OfficeViewProps): ReactNode {
       {coordination.status === 'success' && viewMode === 'graph' ? (
         <OrchestrationGraph
           snapshot={coordination.snapshot}
+          staff={staff}
           onSelectStaff={handleStaffSelect}
         />
       ) : (
