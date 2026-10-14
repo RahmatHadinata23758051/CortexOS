@@ -248,12 +248,27 @@ export function OfficeView({ className = '' }: OfficeViewProps): ReactNode {
           <span>Virtual office</span>
         </button>
       </div>
-      {coordination.status === 'success' && viewMode === 'graph' ? (
-        <OrchestrationGraph
-          snapshot={coordination.snapshot}
-          staff={staff}
-          onSelectStaff={handleStaffSelect}
-        />
+      {viewMode === 'graph' ? (
+        <div className="office-graph-layout">
+          <main className="office-graph-main">
+            {coordination.status === 'success' ? (
+              <OrchestrationGraph
+                snapshot={coordination.snapshot}
+                staff={staff}
+                onSelectStaff={handleStaffSelect}
+              />
+            ) : coordination.status === 'error' ? (
+              <div className="office-error">{coordination.message}</div>
+            ) : (
+              <div className="office-loading">Loading orchestration graph…</div>
+            )}
+          </main>
+          <div className="office-side">
+            <StaffDirectory staff={staff} selectedId={selectedStaffId} onSelect={handleStaffSelect} />
+            <ZoneLegend />
+            <ActivityFeed events={activityEvents} />
+          </div>
+        </div>
       ) : (
         <div className="office-grid">
           <main className="office-main">
