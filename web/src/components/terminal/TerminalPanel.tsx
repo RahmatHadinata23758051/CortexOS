@@ -60,18 +60,16 @@ export function TerminalPanel({ bridge, initialTaskId = 'task-terminal-01', onCa
 
   return (
     <section className="terminal-panel reveal-1" aria-labelledby="terminal-panel-title">
-      <div className="terminal-panel-heading">
-        <div>
+      <header className="terminal-panel-heading">
+        <div className="tool-heading">
           <span className="eyebrow">CORTEXOS / HARNESS</span>
-          <h1 id="terminal-panel-title">Terminal Workflow<br /><i>observe the boundary.</i></h1>
-          <p className="lede">A governed terminal surface for Harness broker sessions. Worker output is untrusted evidence; Orchestra and Inspector retain success authority.</p>
+          <h1 id="terminal-panel-title">Terminal Workflow</h1>
         </div>
         <div className="terminal-contract-stamp">
           <span>WIRE CONTRACT</span>
           <strong>cortexos.worker.v1</strong>
-          <small>JSONL / bounded / redacted</small>
         </div>
-      </div>
+      </header>
 
       <div className="terminal-status-strip">
         <div className="terminal-status-cell">
