@@ -1,3 +1,4 @@
+import { ArrowUpRight, Check, ArrowRight } from 'lucide-react'
 import { type InspectorDecision } from '../../hooks/useInspector'
 
 export type DecisionPanelProps = {
@@ -23,13 +24,13 @@ export function DecisionPanel({ decision, mergeState, mergeEnabled, note, onNote
       <p className="decision-explainer">Choose a review outcome. Only <strong>Accept</strong> unlocks the Orchestra merge command.</p>
       <label className="decision-note">Review note<textarea value={note} onChange={(event) => onNoteChange(event.target.value)} placeholder="Record the reason for this decision…" rows={4} /></label>
       <div className="decision-actions">
-        <button className="decision-accept" type="button" onClick={() => onDecision('accepted')} aria-pressed={decision === 'accepted'}>Accept <span>↗</span></button>
+        <button className="decision-accept" type="button" onClick={() => onDecision('accepted')} aria-pressed={decision === 'accepted'}>Accept <ArrowUpRight size={14} aria-hidden="true" /></button>
         <button className="decision-reject" type="button" onClick={() => onDecision('rejected')} aria-pressed={decision === 'rejected'}>Reject</button>
         <button className="decision-changes" type="button" onClick={() => onDecision('changes_requested')} aria-pressed={decision === 'changes_requested'}>Request changes</button>
       </div>
       <div className="merge-zone">
         <div><span className="eyebrow">ORCHESTRA MERGE</span><strong>{mergeState === 'merged' ? 'Merged into target' : mergeState === 'merging' ? 'Merging evidence…' : 'Ready only after acceptance'}</strong></div>
-        <button className={`merge-button${mergeState === 'merged' ? ' merged' : ''}`} type="button" disabled={!mergeEnabled} onClick={onMerge}>{mergeState === 'merged' ? '✓ Merged' : mergeState === 'merging' ? 'Applying…' : 'Merge task'} <span aria-hidden="true">→</span></button>
+        <button className={`merge-button${mergeState === 'merged' ? ' merged' : ''}`} type="button" disabled={!mergeEnabled} onClick={onMerge}>{mergeState === 'merged' ? <><Check size={14} aria-hidden="true" /> Merged</> : mergeState === 'merging' ? 'Applying…' : 'Merge task'} <ArrowRight size={14} aria-hidden="true" /></button>
       </div>
     </section>
   )

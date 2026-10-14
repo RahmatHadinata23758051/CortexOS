@@ -29,8 +29,8 @@ export function InspectorReview({ task, detail, bridge, onClose, onMerged }: Ins
 
   return <section className="inspector-review" aria-labelledby="inspector-title">
     <header className="inspector-review-header">
-      <div><span className="eyebrow">CORTEXOS / INSPECTOR</span><h1 id="inspector-title">Review the evidence.<br /><i>Then merge with confidence.</i></h1><p className="lede">Worker output is evidence, not a verdict. Inspector acceptance is the only path to an Orchestra-owned merge.</p></div>
-      <div className="inspector-contract"><span>AUTHORITY</span><strong>ADR-0005</strong><small>Inspector → Orchestra</small></div>
+      <div className="tool-heading"><span className="eyebrow">CORTEXOS / INSPECTOR</span><h1 id="inspector-title">Inspector Review</h1></div>
+      <div className="inspector-contract"><span>AUTHORITY</span><strong>ADR-0005</strong></div>
     </header>
     <div className="inspector-meta"><code>{task.id}</code><span className={`inspector-state state-${inspector.decision}`}>{decisionLabel(inspector.decision)}</span><span className="inspector-gate">MERGE GATE: {inspector.mergeEnabled || inspector.mergeState === 'merged' ? 'OPEN' : 'LOCKED'}</span></div>
     <div className="inspector-grid">

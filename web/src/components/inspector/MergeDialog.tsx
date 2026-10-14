@@ -1,3 +1,4 @@
+import { Check, X } from 'lucide-react'
 import { type InspectorDecision } from '../../hooks/useInspector'
 
 export type MergeDialogProps = {
@@ -36,7 +37,7 @@ export function MergeDialog({
             <h2 id="merge-dialog-title">Merge Review & Integration</h2>
           </div>
           <button className="merge-dialog-close" type="button" onClick={onClose} aria-label="Close merge dialog">
-            ✕
+            <X size={16} aria-hidden="true" />
           </button>
         </div>
 
@@ -53,7 +54,7 @@ export function MergeDialog({
             <div>
               <span className="meta-label">Inspector Status</span>
               <span className={`status-pill pill-${decision}`}>
-                {decision === 'accepted' ? 'Accepted ✓' : decision === 'rejected' ? 'Rejected ✗' : decision === 'changes_requested' ? 'Changes Requested' : 'Pending Review'}
+                {decision === 'accepted' ? <><Check size={13} aria-hidden="true" /> Accepted</> : decision === 'rejected' ? <><X size={13} aria-hidden="true" /> Rejected</> : decision === 'changes_requested' ? 'Changes Requested' : 'Pending Review'}
               </span>
             </div>
           </div>
@@ -83,7 +84,7 @@ export function MergeDialog({
 
           {mergeState === 'merged' && (
             <div className="merge-success-banner" role="status">
-              <span className="merge-check-icon" aria-hidden="true">✓</span>
+              <span className="merge-check-icon" aria-hidden="true"><Check size={18} /></span>
               <strong>Integration Complete</strong>
               <p>Worktree cleanly integrated. Task marked as successful in Orchestra.</p>
             </div>
