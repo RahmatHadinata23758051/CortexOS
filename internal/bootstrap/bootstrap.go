@@ -195,6 +195,18 @@ func wireProductionDispatcher(
 	return dispatcher, nil
 }
 
+func openPiCoordinator(canonicalRoot string, workspaceService *workspace.Service) (application.BrainPort, error) {
+	worktreeRoot := resolveWorktreeRoot(canonicalRoot, workspaceService)
+	if err := os.MkdirAll(worktreeRoot, 0o700); err != nil {
+		return nil, fmt.Errorf("prepare coordinator worktree root: %w", err)
+	}
+	piAdapter, err := harness.NewPiCLIAdapter(harness.PiCLIAdapterConfig{WorktreeRoot: worktreeRoot})
+	if err != nil {
+		return nil, err
+	}
+	return bridge.NewPiBrainAdapter(piAdapter, application.OrchestraCoordinatorSystemPrompt, 120*time.Second)
+}
+
 func resolveWorktreeRoot(canonicalRoot string, workspaceService *workspace.Service) string {
 	if custom := os.Getenv("CORTEXOS_WORKTREE_ROOT"); custom != "" {
 		if abs, err := filepath.Abs(custom); err == nil {
@@ -295,6 +307,19 @@ func Run() error {
 		brainPort = brainAdapter
 	}
 
+	// Orchestra's coordinator is the CLI AI (Pi), not a hardcoded classifier.
+	// The Pi model answers and plans; simple prompts therefore never spawn
+	// workers. Falls back to the env-configured provider brain, then fail-closed.
+	coordinatorBrain := brainPort
+	if piBrain, piErr := openPiCoordinator(canonicalRoot, workspaceService); piErr != nil {
+		logging.DefaultLogger().WarnContext(ctx, "Pi coordinator model unavailable", "error", piErr.Error())
+	} else {
+		coordinatorBrain = piBrain
+	}
+	if coordinatorBrain == nil {
+		logging.DefaultLogger().WarnContext(ctx, "Orchestra coordinator model disabled", "detail", "install the Pi CLI or set CORTEXOS_PROVIDER_*")
+	}
+
 	staffStore, err := staffsqlite.Open(ctx, filepath.Join(canonicalRoot, "state", "staff.db"))
 	if err != nil {
 		return err
@@ -311,7 +336,7 @@ func Run() error {
 	service := application.NewServiceWithWorkspaceAndOrchestraAndProviderAndBrain(workspaceService, orchestraPort, providerPort, brainPort)
 	if orchestraPort != nil {
 		planManager := application.NewOrchestraPlanManager(orchestraPort)
-		planManager.SetBrain(brainPort)
+		planManager.SetBrain(coordinatorBrain)
 		service.SetOrchestraPlan(planManager)
 		service.SetWorkerLifecycle(application.NewWorkerLifecycleManager(orchestraPort))
 	}
