@@ -45,6 +45,9 @@ var (
 // PiCLIAdapterConfig controls construction of the Pi CLI adapter.
 type PiCLIAdapterConfig struct {
 	ExecutablePath string
+	// ExecutableArgs are arguments placed before every invocation's own flags
+	// (e.g. a launcher script path when ExecutablePath is an interpreter).
+	ExecutableArgs []string
 	WorktreeRoot   string
 	AllowedEnvVars []string
 	MaxOutputBytes int64
@@ -57,6 +60,7 @@ type PiCLIAdapterConfig struct {
 // PiCLIAdapter implements EngineAdapter for the Pi CLI engine.
 type PiCLIAdapter struct {
 	executablePath string
+	baseArgs       []string
 	worktreeRoot   string
 	timeout        time.Duration
 	maxPromptBytes int
@@ -79,14 +83,15 @@ func NewPiCLIAdapter(config PiCLIAdapterConfig) (*PiCLIAdapter, error) {
 	}
 
 	executable := strings.TrimSpace(config.ExecutablePath)
+	baseArgs := append([]string(nil), config.ExecutableArgs...)
 	runner := config.Runner
 	if executable == "" {
 		if runner == nil {
-			found, findErr := findPiCLIExecutable()
+			found, args, findErr := findPiCLICommand()
 			if findErr != nil {
 				return nil, findErr
 			}
-			executable = found
+			executable, baseArgs = found, args
 		} else {
 			executable = "pi"
 		}
@@ -121,6 +126,7 @@ func NewPiCLIAdapter(config PiCLIAdapterConfig) (*PiCLIAdapter, error) {
 
 	return &PiCLIAdapter{
 		executablePath: executable,
+		baseArgs:       baseArgs,
 		worktreeRoot:   root,
 		timeout:        sandbox.Config().Timeout,
 		maxPromptBytes: maxPrompt,
@@ -131,26 +137,37 @@ func NewPiCLIAdapter(config PiCLIAdapterConfig) (*PiCLIAdapter, error) {
 	}, nil
 }
 
-// findPiCLIExecutable locates the installed pi CLI. Besides PATH it checks the
-// standard pi install layout (~/.pi/agent/bin), because the Windows launcher
-// (pi.cmd) is commonly not on PATH.
-// ponytail: fixed well-known locations, not a general search. Add config-driven
-// paths if another install layout appears.
-func findPiCLIExecutable() (string, error) {
+// findPiCLICommand locates an executable command and any interpreter arguments
+// needed by the platform launcher. The Windows pi.cmd wrapper is avoided because
+// os/exec does not consistently launch batch files with complex argv values.
+func findPiCLICommand() (string, []string, error) {
 	if path, err := findPiExecutable(); err == nil {
-		return path, nil
+		return path, nil, nil
 	}
 	home, err := os.UserHomeDir()
 	if err != nil {
-		return "", fmt.Errorf("%w: pi not found in PATH", ErrPiCLIExecutableNotFound)
+		return "", nil, fmt.Errorf("%w: pi not found in PATH", ErrPiCLIExecutableNotFound)
 	}
-	for _, name := range []string{"pi", "pi.cmd", "pi.exe"} {
-		candidate := filepath.Join(home, ".pi", "agent", "bin", name)
+	bin := filepath.Join(home, ".pi", "agent", "bin")
+	for _, name := range []string{"pi.ps1", "pi.cmd", "pi.exe"} {
+		candidate := filepath.Join(bin, name)
 		if info, statErr := os.Stat(candidate); statErr == nil && !info.IsDir() {
-			return candidate, nil
+			if name == "pi.ps1" || name == "pi.cmd" {
+				node, nodeErr := exec.LookPath("node")
+				if nodeErr == nil {
+					return node, []string{filepath.Join(bin, "pi-launcher.js")}, nil
+				}
+			}
+			return candidate, nil, nil
 		}
 	}
-	return "", fmt.Errorf("%w: pi not found in PATH or ~/.pi/agent/bin", ErrPiCLIExecutableNotFound)
+	return "", nil, fmt.Errorf("%w: pi not found in PATH or ~/.pi/agent/bin", ErrPiCLIExecutableNotFound)
+}
+
+// findPiCLIExecutable retains the descriptor lookup contract for callers/tests.
+func findPiCLIExecutable() (string, error) {
+	path, _, err := findPiCLICommand()
+	return path, err
 }
 
 func (a *PiCLIAdapter) Kind() ToolKind { return PiAdapterKind }
@@ -290,6 +307,58 @@ func (a *PiCLIAdapter) Execute(ctx ExecutionContext, envelope ExecutionEnvelope)
 	return result, nil
 }
 
+// Complete runs a bounded, tool-less Pi turn for an application-level
+// coordinator. It deliberately disables project context files and tools so a
+// greeting or planning request cannot turn into an unsolicited coding run.
+func (a *PiCLIAdapter) Complete(ctx context.Context, systemPrompt, userPrompt string, timeout time.Duration) (string, error) {
+	if a == nil || a.sandbox == nil {
+		return "", fmt.Errorf("%w: adapter is uninitialized", ErrPiCLIInvalidConfig)
+	}
+	userPrompt = strings.TrimSpace(userPrompt)
+	if userPrompt == "" || strings.IndexByte(userPrompt, 0) >= 0 || len(userPrompt) > a.maxPromptBytes {
+		return "", fmt.Errorf("%w: prompt is empty or exceeds limits", ErrPiCLIInvalidConfig)
+	}
+	if timeout <= 0 || (a.timeout > 0 && timeout > a.timeout) {
+		timeout = a.timeout
+	}
+	if timeout <= 0 {
+		timeout = 120 * time.Second
+	}
+	childCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+
+	args := []string{"--print", "--mode", "json", "--no-session", "--no-tools", "--no-context-files"}
+	if strings.TrimSpace(systemPrompt) != "" {
+		args = append(args, "--system-prompt", strings.TrimSpace(systemPrompt))
+	}
+	args = append(args, "--")
+	result, runErr := a.run(childCtx, args, userPrompt, os.Environ())
+	if errors.Is(runErr, ErrTimeout) || result.TimedOut {
+		return "", ErrTimeout
+	}
+	if errors.Is(runErr, ErrCanceled) || result.Canceled {
+		return "", ErrCanceled
+	}
+	outcome, parseErr := parsePiCLIStream(result.Stdout)
+	if parseErr != nil {
+		if runErr != nil {
+			return "", fmt.Errorf("%w: %v", ErrPiCLIProcessCrash, runErr)
+		}
+		return "", parseErr
+	}
+	if outcome.ErrorMessage != "" || result.ExitCode != 0 {
+		return "", fmt.Errorf("%w: pi reported %s", ErrPiCLIProcessFailed,
+			firstNonEmpty(outcome.ErrorMessage, fmt.Sprintf("exit code %d", result.ExitCode)))
+	}
+	if runErr != nil {
+		return "", fmt.Errorf("%w: %v", ErrPiCLIProcessFailed, runErr)
+	}
+	if strings.TrimSpace(outcome.Summary) == "" {
+		return "", fmt.Errorf("%w: pi returned an empty response", ErrPiCLIProtocolError)
+	}
+	return strings.TrimSpace(truncate(outcome.Summary, piCLIMaxSummaryLen)), nil
+}
+
 // run validates the fixed flags through the sandbox, then passes the prompt as a
 // final argv element. The prompt is deliberately NOT routed through
 // ValidateArgs: that validator rejects shell syntax and ".." which are inert for
@@ -313,7 +382,7 @@ func (a *PiCLIAdapter) run(ctx context.Context, args []string, prompt string, en
 	if err != nil {
 		return SandboxResult{}, err
 	}
-	full := append(append([]string(nil), args...), prompt)
+	full := append(append(append([]string(nil), a.baseArgs...), args...), prompt)
 	res, runErr := a.runner.Run(ctx, a.executablePath, full, filtered, workDir,
 		config.StdoutLimitBytes, config.StderrLimitBytes, config.CancellationGracePeriod)
 	res.RedactedOut = redactOutput(res.Stdout, config.RedactionConfig)
