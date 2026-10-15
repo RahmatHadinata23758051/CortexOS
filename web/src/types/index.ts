@@ -25,6 +25,9 @@ export * from './knowledge-context'
 export * from './harness'
 export * from './brain'
 export * from './phase13'
+export * from './orchestra-plan'
+export * from './files'
+export * from './worker-lifecycle'
 import type { WorkspaceBridge } from './workspace'
 import type { Phase13Bridge } from './phase13'
 import type { KnowledgeBridge } from './knowledge'
@@ -35,8 +38,11 @@ import type { CockpitBridge } from './cockpit'
 import type { OrchestraBridge } from './orchestra'
 import type { CoordinationBridge } from './coordination'
 import type { BrainBridge } from './brain'
+import type { OrchestraPlanBridge } from './orchestra-plan'
+import type { FilesBridge } from './files'
+import type { WorkerLifecycleBridge } from './worker-lifecycle'
 
-export type FullBridge = RuntimeBridge & WorkspaceBridge & OfficeBridge & CockpitBridge & OrchestraBridge & CoordinationBridge & KnowledgeBridge & KnowledgeContextBridge & HarnessBridge & BrainBridge & Phase13Bridge
+export type FullBridge = RuntimeBridge & WorkspaceBridge & OfficeBridge & CockpitBridge & OrchestraBridge & CoordinationBridge & KnowledgeBridge & KnowledgeContextBridge & HarnessBridge & BrainBridge & Phase13Bridge & OrchestraPlanBridge & FilesBridge & WorkerLifecycleBridge
 
 export type WailsWindow = Window & {
   go?: {
@@ -60,6 +66,10 @@ export const wailsRuntimeBridge: FullBridge = {
   QueryWorkspace: (request) => getWailsBridge().QueryWorkspace(request),
   RebuildWorkspaceRetrieval: (request) => getWailsBridge().RebuildWorkspaceRetrieval(request),
   RegisterWorkspaceProject: (request) => getWailsBridge().RegisterWorkspaceProject(request),
+  ListFiles: (request) => getWailsBridge().ListFiles(request),
+  ReadFile: (request) => getWailsBridge().ReadFile(request),
+  GetWorkerCards: (request) => getWailsBridge().GetWorkerCards(request),
+  TransitionWorker: (request) => getWailsBridge().TransitionWorker(request),
   ListStaffSummaries: (request) => getWailsBridge().ListStaffSummaries(request),
   GetCockpitRuntime: () => getWailsBridge().GetCockpitRuntime(),
   GetCockpitWorkspace: (request) => getWailsBridge().GetCockpitWorkspace(request),
@@ -82,6 +92,10 @@ export const wailsRuntimeBridge: FullBridge = {
   DispatchBrainTask: (request) => getWailsBridge().DispatchBrainTask(request),
   DispatchBrainTaskStream: (request) => getWailsBridge().DispatchBrainTaskStream(request),
   RouteBrainTaskToOrchestra: (request) => getWailsBridge().RouteBrainTaskToOrchestra(request),
+  ProposeOrchestraPlan: (request) => getWailsBridge().ProposeOrchestraPlan(request),
+  ConfirmOrchestraPlan: (request) => getWailsBridge().ConfirmOrchestraPlan(request),
+  RejectOrchestraPlan: (request) => getWailsBridge().RejectOrchestraPlan(request),
+  GetOrchestraPlan: (request) => getWailsBridge().GetOrchestraPlan(request),
   ProposeToolCall: (proposal) => getWailsBridge().ProposeToolCall(proposal),
   DecideToolCall: (decision) => getWailsBridge().DecideToolCall(decision),
   GetToolApproval: (proposalId) => getWailsBridge().GetToolApproval(proposalId),

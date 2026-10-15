@@ -7,6 +7,8 @@ import { loadOfficeSnapshot, createOfficeEventSource, staffById, type OfficeStat
 import { loadCoordinationSnapshot, onCoordinationChanged } from '../bridge/coordination'
 import { CoordinationPanel } from './CoordinationPanel'
 import { OrchestrationGraph } from './OrchestrationGraph'
+import { OrchestraPromptHud } from './OrchestraPromptHud'
+import { WorkerCardsPanel } from './WorkerCardsPanel'
 import { wailsRuntimeBridge } from '../types'
 
 interface OfficeSceneHandle {
@@ -22,6 +24,7 @@ interface OfficeGameHandle {
 
 interface OfficeViewProps {
   className?: string
+  projectId?: string
 }
 
 function StaffDirectory({ staff, selectedId, onSelect }: { staff: readonly StaffSummary[]; selectedId?: string; onSelect: (id: string) => void }) {
@@ -173,7 +176,7 @@ function OfficeCanvas({ staff, onSelect, brainState, coordination }: { staff: re
   return <div ref={canvasRef} className="office-canvas" role="img" aria-label="Virtual office canvas" />
 }
 
-export function OfficeView({ className = '' }: OfficeViewProps): ReactNode {
+export function OfficeView({ className = '', projectId }: OfficeViewProps): ReactNode {
   const [viewMode, setViewMode] = useState<'graph' | 'office'>('graph')
   const [officeState, setOfficeState] = useState<OfficeState>({ status: 'loading' })
   const [selectedStaffId, setSelectedStaffId] = useState<string | undefined>()
@@ -219,7 +222,7 @@ export function OfficeView({ className = '' }: OfficeViewProps): ReactNode {
   useEffect(() => {
     let active = true
     const refresh = () => {
-      loadCoordinationSnapshot(wailsRuntimeBridge).then((state) => {
+      loadCoordinationSnapshot(wailsRuntimeBridge, projectId).then((state) => {
         if (!active) return
         if (state.status === 'success') setCoordination({ status: 'success', snapshot: state.snapshot })
         else if (state.status === 'error') setCoordination({ status: 'error', message: state.message })
@@ -228,7 +231,7 @@ export function OfficeView({ className = '' }: OfficeViewProps): ReactNode {
     refresh()
     const unsubscribe = onCoordinationChanged(refresh)
     return () => { active = false; unsubscribe() }
-  }, [])
+  }, [projectId])
 
   if (officeState.status === 'loading') return <div className={`office-view ${className}`}><div className="office-loading">Loading virtual office…</div></div>
   if (officeState.status === 'error') return <div className={`office-view ${className}`}><div className="office-error">{officeState.code}: {officeState.message}</div></div>
@@ -251,6 +254,7 @@ export function OfficeView({ className = '' }: OfficeViewProps): ReactNode {
       {viewMode === 'graph' ? (
         <div className="office-graph-layout">
           <main className="office-graph-main">
+            {projectId && <OrchestraPromptHud projectId={projectId} bridge={wailsRuntimeBridge} />}
             {coordination.status === 'success' ? (
               <OrchestrationGraph
                 snapshot={coordination.snapshot}
@@ -264,6 +268,7 @@ export function OfficeView({ className = '' }: OfficeViewProps): ReactNode {
             )}
           </main>
           <div className="office-side">
+            {projectId && <WorkerCardsPanel projectId={projectId} bridge={wailsRuntimeBridge} />}
             <StaffDirectory staff={staff} selectedId={selectedStaffId} onSelect={handleStaffSelect} />
             <ZoneLegend />
             <ActivityFeed events={activityEvents} />
@@ -272,6 +277,7 @@ export function OfficeView({ className = '' }: OfficeViewProps): ReactNode {
       ) : (
         <div className="office-grid">
           <main className="office-main">
+            {projectId && <OrchestraPromptHud projectId={projectId} bridge={wailsRuntimeBridge} />}
             <OfficeCanvas
               staff={staff}
               onSelect={handleStaffSelect}
@@ -280,6 +286,7 @@ export function OfficeView({ className = '' }: OfficeViewProps): ReactNode {
             />
           </main>
           <div className="office-side">
+            {projectId && <WorkerCardsPanel projectId={projectId} bridge={wailsRuntimeBridge} />}
             {coordination.status === 'success' && <CoordinationPanel snapshot={coordination.snapshot} />}
             <StaffDirectory staff={staff} selectedId={selectedStaffId} onSelect={handleStaffSelect} />
             <ZoneLegend />

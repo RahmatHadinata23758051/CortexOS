@@ -1,5 +1,25 @@
 # CortexOS — Frontend & UI Redesign (Claude Code Guide)
 
+## ⚠️ READ FIRST — Current Product Direction
+
+**Before any frontend work, read `docs/specs/orchestra-files-frontend-handoff.md`.**
+
+It supersedes the old dashboard-first, nine-tab information architecture. The agreed direction is:
+
+1. App opens into a **Project/Office picker**, not a Workspace dashboard.
+2. Entering a project shows **Orchestra** as the main workspace (node-based graph on the full canvas).
+3. A **collapsible, icon-first sidebar** (Aceternity-style 60px ↔ ~300px) replaces the dense navigation rail.
+4. A **floating, draggable, resizable prompt HUD** replaces the fixed chat pane. It holds the conversation with Orchestra, plan confirmation, and approval/review.
+5. **Approval and review are Orchestra's responsibility** and appear synchronized in both the HUD and the graph node.
+6. **Workers are ephemeral.** Orchestra chooses role/name/task; worker cards spawn when dispatched and unspawn after acceptance. There is **no standalone Staff tab**.
+7. **Files** is a project surface with three sub-areas: Repository, Support (user files, read-only to workers), and Vault (Knowledge). It has a worktree viewer switcher.
+8. **Knowledge = many purpose-named Markdown files** (`decisions/`, `specs/`, `conventions/`, `reviews/`, `learnings/`, `notes/`), owned/updated by Orchestra after validated review.
+9. Target top-level destinations: **Orchestra, Files, Settings** — nothing else at top level.
+
+Work in **contract-first parallel** mode with the backend: build against typed bridge contracts and fixtures, never fabricate runtime state in production routes.
+
+---
+
 ## 🎯 Project & Mission
 You are working on **CortexOS**, an **Executive Control Room** native desktop console application built with React + Vite + TypeScript.
 The user specifically asked for you (Claude Code) to lead the frontend/UI overhaul because the previous iterations fell far short of their standards ("masih ampas broo", "kayak gada perubahan", "masih jelek").

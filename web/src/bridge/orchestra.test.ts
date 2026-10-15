@@ -5,6 +5,8 @@ import {
   getOrchestraTask,
   loadOrchestraTasks,
   onOrchestraEvent,
+  onOrchestraPlanEvent,
+  onOrchestraPlanLifecycle,
   mergeOrchestraTask,
   onOrchestraTaskChanged,
   retryOrchestraTask,
@@ -16,6 +18,7 @@ import {
   type OrchestraTaskDetail,
   type OrchestraTaskSummary,
 } from '../types/orchestra'
+import { OrchestraPlanEventNames } from '../types/orchestra-plan'
 
 const validTask: OrchestraTaskSummary = {
   id: 'task-1',
@@ -217,5 +220,27 @@ describe('orchestra runtime event subscription seam', () => {
 
     unsub()
     expect(offFn).toHaveBeenCalled()
+  })
+
+  it('subscribes to plan lifecycle events and cleans up every listener', () => {
+    const eventsOn = vi.fn().mockReturnValue(vi.fn())
+    ;(globalThis as { runtime?: unknown }).runtime = { EventsOn: eventsOn }
+
+    const handler = vi.fn()
+    const unsubscribe = onOrchestraPlanLifecycle(handler)
+
+    expect(eventsOn).toHaveBeenCalledTimes(Object.values(OrchestraPlanEventNames).length)
+    const firstCallback = eventsOn.mock.calls[0][1]
+    firstCallback({ planId: 'plan-1' })
+    expect(handler).toHaveBeenCalledWith({ planId: 'plan-1' })
+    unsubscribe()
+  })
+
+  it('subscribes to a specific plan event', () => {
+    const eventsOn = vi.fn().mockReturnValue(vi.fn())
+    ;(globalThis as { runtime?: unknown }).runtime = { EventsOn: eventsOn }
+    const unsubscribe = onOrchestraPlanEvent(OrchestraPlanEventNames.WorkerUpdated, vi.fn())
+    expect(eventsOn).toHaveBeenCalledWith(OrchestraPlanEventNames.WorkerUpdated, expect.any(Function))
+    unsubscribe()
   })
 })
