@@ -60,7 +60,7 @@ export type WorkspaceProjectRequest = {
   id: string
   name: string
   repositoryRoot: string
-  vaultRoot: string
+  vaultRoot?: string
   defaultBranch?: string
 }
 
@@ -75,6 +75,7 @@ export type WorkspaceBridgeError = {
 }
 
 export type WorkspaceBridge = {
+  PickDirectory(): Promise<string>
   GetWorkspaceSnapshot(request: WorkspaceSnapshotRequest): Promise<WorkspaceSnapshot>
   QueryWorkspace(request: WorkspaceNoteQueryRequest): Promise<WorkspaceNoteResult[]>
   RebuildWorkspaceRetrieval(request: WorkspaceMutationRequest): Promise<void>

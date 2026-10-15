@@ -1,5 +1,5 @@
 import { useState, type FormEvent, type ReactNode } from 'react'
-import { FolderPlus, GitBranch, AlertTriangle, ArrowRight, RefreshCw, FolderGit2 } from 'lucide-react'
+import { FolderPlus, GitBranch, AlertTriangle, ArrowRight, RefreshCw, FolderGit2, Search, MapPin } from 'lucide-react'
 import type { WorkspaceProject } from '../types/workspace'
 import type { WorkspaceState } from '../bridge/workspace'
 import type { RuntimeState } from '../bridge/runtime'
@@ -8,7 +8,6 @@ export interface ProjectFormState {
   id: string
   name: string
   repositoryRoot: string
-  vaultRoot: string
   defaultBranch: string
 }
 
@@ -24,6 +23,7 @@ export interface ProjectPickerProps {
   onSubmit: (event: FormEvent<HTMLFormElement>) => void
   onUpdateForm: (key: keyof ProjectFormState, value: string) => void
   onResetForm: () => void
+  onPickFolder: () => Promise<void>
 }
 
 export function ProjectPicker({
@@ -38,6 +38,7 @@ export function ProjectPicker({
   onSubmit,
   onUpdateForm,
   onResetForm,
+  onPickFolder,
 }: ProjectPickerProps): ReactNode {
   const [showRegisterForm, setShowRegisterForm] = useState(false)
   const [isReconnecting, setIsReconnecting] = useState(false)
@@ -173,26 +174,22 @@ export function ProjectPicker({
                     required
                   />
                 </label>
-                <label className="field-group">
-                  <span>Repository Root *</span>
-                  <input
-                    type="text"
-                    value={form.repositoryRoot}
-                    onChange={(e) => onUpdateForm('repositoryRoot', e.target.value)}
-                    placeholder="/path/to/repo"
-                    required
-                  />
-                </label>
-                <label className="field-group">
-                  <span>Vault Root *</span>
-                  <input
-                    type="text"
-                    value={form.vaultRoot}
-                    onChange={(e) => onUpdateForm('vaultRoot', e.target.value)}
-                    placeholder="/path/to/vault"
-                    required
-                  />
-                </label>
+                <div className="field-group project-location-field">
+                  <span>Project Location *</span>
+                  <button
+                    type="button"
+                    className="project-location-picker"
+                    onClick={() => void onPickFolder()}
+                    disabled={mutationState === 'saving'}
+                  >
+                    <MapPin size={15} aria-hidden="true" />
+                    <span className="project-location-path">{form.repositoryRoot || 'Explore folders'}</span>
+                    <Search size={14} aria-hidden="true" />
+                  </button>
+                  <small>
+                    Choose the repository folder. CortexOS keeps the Vault inside <code>.cortexos/vault</code>.
+                  </small>
+                </div>
                 <label className="field-group">
                   <span>Default Branch</span>
                   <input
@@ -249,7 +246,7 @@ export function ProjectPicker({
             <div className="picker-empty-state">
               <FolderGit2 size={36} strokeWidth={1.5} className="empty-icon" aria-hidden="true" />
               <h3>No projects registered yet</h3>
-              <p>Register a local repository and Knowledge Vault to enter the Orchestra workspace.</p>
+              <p>Choose one project folder to enter the Orchestra workspace. CortexOS keeps project knowledge inside it.</p>
               <button
                 type="button"
                 className="btn-primary"

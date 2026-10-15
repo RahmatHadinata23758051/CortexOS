@@ -30,7 +30,6 @@ const emptyProject: ProjectFormState = {
   id: '',
   name: '',
   repositoryRoot: '',
-  vaultRoot: '',
   defaultBranch: 'main',
 }
 
@@ -99,6 +98,30 @@ export function App({ initialRoute, initialTheme, initialProjectId, initialWorks
     setMobileMenuOpen(false)
   }
 
+  const pickProjectFolder = async () => {
+    if (runtime.status !== 'success') {
+      setMutationState('error')
+      setMutationMessage('Choosing a folder requires an active runtime bridge.')
+      return
+    }
+    try {
+      const selected = await wailsRuntimeBridge.PickDirectory()
+      if (!selected) return
+      const baseName = selected.replace(/[\\/]+$/, '').split(/[\\/]/).pop() ?? ''
+      setForm((current) => ({
+        ...current,
+        repositoryRoot: selected,
+        name: current.name.trim() || baseName,
+        id: current.id.trim() || slugify(baseName),
+      }))
+      setMutationState('idle')
+      setMutationMessage('')
+    } catch (error) {
+      setMutationState('error')
+      setMutationMessage(error instanceof Error ? error.message : 'Folder selection failed.')
+    }
+  }
+
   const submitProject = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     if (runtime.status !== 'success') {
@@ -106,9 +129,9 @@ export function App({ initialRoute, initialTheme, initialProjectId, initialWorks
       setMutationMessage('Registration requires an active runtime bridge.')
       return
     }
-    if (!form.id.trim() || !form.name.trim() || !form.repositoryRoot.trim() || !form.vaultRoot.trim()) {
+    if (!form.id.trim() || !form.name.trim() || !form.repositoryRoot.trim()) {
       setMutationState('error')
-      setMutationMessage('Project ID, name, repository root, and Vault root are required.')
+      setMutationMessage('Project ID, name, and a chosen project location are required.')
       return
     }
 
@@ -116,11 +139,9 @@ export function App({ initialRoute, initialTheme, initialProjectId, initialWorks
     setMutationMessage('')
     try {
       const project = await wailsRuntimeBridge.RegisterWorkspaceProject({
-        ...form,
         id: form.id.trim(),
         name: form.name.trim(),
         repositoryRoot: form.repositoryRoot.trim(),
-        vaultRoot: form.vaultRoot.trim(),
         defaultBranch: form.defaultBranch.trim(),
         schemaVersion: workspaceSchemaVersion,
       })
@@ -224,6 +245,7 @@ export function App({ initialRoute, initialTheme, initialProjectId, initialWorks
           onSubmit={submitProject}
           onUpdateForm={updateForm}
           onResetForm={resetForm}
+          onPickFolder={pickProjectFolder}
         />
       </main>
     </>
@@ -346,6 +368,10 @@ function persistProjectId(projectId: string) {
   if (typeof window === 'undefined') return
   if (projectId) window.localStorage.setItem(PROJECT_STORAGE_KEY, projectId)
   else window.localStorage.removeItem(PROJECT_STORAGE_KEY)
+}
+
+function slugify(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'project'
 }
 
 function getThemePreference(): Theme {

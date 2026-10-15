@@ -2859,6 +2859,16 @@ a {
 .field-group > span { font: 600 0.66rem var(--font-mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-muted); }
 .field-group input { height: 36px; padding: 0 12px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface-2); color: var(--text); font: 0.78rem var(--font-mono); }
 .field-group input:focus { border-color: var(--accent); outline: none; box-shadow: 0 0 0 2px var(--accent-bg); }
+.project-location-field { grid-column: 1 / -1; }
+.project-location-picker { display: flex; align-items: center; gap: 10px; height: 44px; padding: 0 14px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface-2); color: var(--text); cursor: pointer; text-align: left; transition: border-color 0.15s, background 0.15s; }
+.project-location-picker:hover:not(:disabled) { border-color: var(--accent); background: var(--accent-bg); }
+.project-location-picker:focus-visible { outline: 2px solid var(--focus-ring, var(--accent)); outline-offset: 2px; }
+.project-location-picker:disabled { opacity: 0.55; cursor: not-allowed; }
+.project-location-picker svg { color: var(--text-muted); flex-shrink: 0; }
+.project-location-picker:hover:not(:disabled) svg { color: var(--accent-text); }
+.project-location-path { flex: 1; min-width: 0; font: 0.76rem var(--font-mono); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.project-location-field small { color: var(--text-muted); font-size: 0.7rem; line-height: 1.5; }
+.project-location-field small code { font: 0.68rem var(--font-mono); padding: 1px 5px; border-radius: 4px; background: var(--surface-2); border: 1px solid var(--border); }
 .form-message { margin-top: 14px; padding: 10px 12px; border-radius: var(--radius-sm); font-size: 0.75rem; }
 .form-message.is-error { background: var(--err-bg); color: var(--err); border: 1px solid var(--err); }
 .form-message.is-success { background: var(--ok-bg); color: var(--ok); border: 1px solid var(--ok); }
