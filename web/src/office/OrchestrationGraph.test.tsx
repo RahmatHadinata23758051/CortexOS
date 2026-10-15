@@ -97,6 +97,23 @@ describe('OrchestrationGraph', () => {
     expect(markup).toContain('DISPATCH')
   })
 
+  it('names a worker node with its call sign and keeps the task title as detail', () => {
+    const markup = renderToStaticMarkup(<OrchestrationGraph snapshot={activeSnapshot} />)
+    expect(markup).toContain('<strong>implementer-1</strong>')
+    expect(markup).toContain('IMPLEMENTER · PHASE 2')
+    expect(markup).toContain('Build authority chain adapter · 55% · ATTEMPT 1/3')
+  })
+
+  it('falls back to a generic worker label when the task has no assignment', () => {
+    const unassigned: CoordinationSnapshot = {
+      ...activeSnapshot,
+      tasks: [{ ...activeSnapshot.tasks[1], assignedStaffId: undefined, assignedStaffRole: undefined }],
+    }
+    const markup = renderToStaticMarkup(<OrchestrationGraph snapshot={unassigned} />)
+    expect(markup).toContain('<strong>Worker</strong>')
+    expect(markup).toContain('WORKER · PHASE 2')
+  })
+
   it('renders execution lane labels L0 Orchestra and execution levels', () => {
     const markup = renderToStaticMarkup(<OrchestrationGraph snapshot={activeSnapshot} />)
     expect(markup).toContain('L0 · ORCHESTRA')

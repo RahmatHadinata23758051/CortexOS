@@ -66,6 +66,13 @@ function roleForTask(task: CoordinationTask): string {
   return callSign.replace(/-\d+$/, '')
 }
 
+function workerNameForTask(task: CoordinationTask): string {
+  const callSign = (task.assignedStaffId ?? '').trim()
+  if (callSign) return callSign
+  const role = roleForTask(task)
+  return role ? `${role} worker` : 'Worker'
+}
+
 function zoneForTask(task: CoordinationTask): GraphZone {
   const role = roleForTask(task)
   if (role === 'coordinator') return 'coordination'
@@ -115,14 +122,14 @@ function buildGraph(snapshot: CoordinationSnapshot) {
     },
     ...tasks.map((task) => ({
       id: task.id,
-      title: task.title,
+      title: workerNameForTask(task),
       role: roleForTask(task),
       zone: zoneForTask(task),
       level: Math.max(1, task.phase + 1),
       status: statusForTask(task),
       statusLabel: statusLabelForTask(task),
-      meta: `${task.assignedStaffId || 'UNASSIGNED'} · PHASE ${task.phase + 1}`,
-      detail: `${Math.round(task.progress)}% · ATTEMPT ${task.attempt}/${task.maxAttempts}`,
+      meta: `${roleForTask(task).toUpperCase() || 'WORKER'} · PHASE ${task.phase + 1}`,
+      detail: `${task.title} · ${Math.round(task.progress)}% · ATTEMPT ${task.attempt}/${task.maxAttempts}`,
       task,
     })),
   ]
@@ -243,7 +250,7 @@ export function OrchestrationGraph({ snapshot, onSelectTask, className = '' }: O
                   onClick={() => { if (node.task) onSelectTask?.(node.task.id) }}
                 >
                   <span className="hierarchy-avatar-wrap" aria-hidden="true">
-                    <span className="hierarchy-avatar">{node.task ? 'W' : 'O'}</span>
+                    <span className="hierarchy-avatar">{node.task ? node.title.slice(0, 1).toUpperCase() : 'O'}</span>
                   </span>
                   <span className="hierarchy-node-copy">
                     <span className="hierarchy-node-title">
