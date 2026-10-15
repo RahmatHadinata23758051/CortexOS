@@ -2,6 +2,7 @@ package application
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"testing"
 	"time"
@@ -11,6 +12,23 @@ import (
 
 type mockOrchestraTaskStore struct {
 	tasks []orchestra.Task
+}
+
+type testCoordinatorBrain struct {
+	output string
+}
+
+func (b *testCoordinatorBrain) Name() string { return "test-coordinator" }
+
+func (b *testCoordinatorBrain) Dispatch(ctx context.Context, req BrainDispatchRequest) (BrainDispatchResult, error) {
+	if err := ctx.Err(); err != nil {
+		return BrainDispatchResult{}, err
+	}
+	return BrainDispatchResult{TaskID: req.TaskID, State: "completed", Output: b.output, SchemaVersion: BrainBridgeContract}, nil
+}
+
+func (b *testCoordinatorBrain) DispatchStream(ctx context.Context, req BrainDispatchRequest, handler StreamChunkHandler) (BrainDispatchResult, error) {
+	return b.Dispatch(ctx, req)
 }
 
 func (m *mockOrchestraTaskStore) ListTasks(context.Context) ([]orchestra.Task, error) {
@@ -287,6 +305,7 @@ func TestOrchestraPlanManager_RejectFlow(t *testing.T) {
 func TestOrchestraPlanManager_InquiryDoesNotSpawnWorkers(t *testing.T) {
 	mockStore := &mockOrchestraTaskStore{}
 	mgr := NewOrchestraPlanManager(mockStore)
+	mgr.SetBrain(&testCoordinatorBrain{output: `{"intent":"inquiry","reply":"Halo dari model."}`})
 
 	ctx := context.Background()
 	req := OrchestraPlanProposalRequest{
@@ -318,6 +337,7 @@ func TestOrchestraPlanManager_InquiryDoesNotSpawnWorkers(t *testing.T) {
 func TestOrchestraPlanManager_ActionPromptWithoutTasksAutoDerivesAndDispatches(t *testing.T) {
 	mockStore := &mockOrchestraTaskStore{}
 	mgr := NewOrchestraPlanManager(mockStore)
+	mgr.SetBrain(&testCoordinatorBrain{output: `{"intent":"action","title":"Inventory system","role":"implementer","action":"build the inventory module","acceptanceCriteria":["Inventory works"]}`})
 
 	ctx := context.Background()
 	req := OrchestraPlanProposalRequest{
@@ -343,24 +363,26 @@ func TestOrchestraPlanManager_ActionPromptWithoutTasksAutoDerivesAndDispatches(t
 	}
 }
 
-func TestClassifyOrchestraPrompt(t *testing.T) {
-	cases := []struct {
-		prompt string
-		want   string
-	}{
-		{"halo", "inquiry"},
-		{"Halo bro!", "inquiry"},
-		{"apa kabar?", "inquiry"},
-		{"apa fungsi orchestra?", "inquiry"},
-		{"buatkan modul baru", "action"},
-		{"fix bug di platform", "action"},
-		{"refactor service code", "action"},
+func TestParseOrchestraDecision(t *testing.T) {
+	decision, err := parseOrchestraDecision("```json\n{\"intent\":\"inquiry\",\"reply\":\"model answer\"}\n```")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
 	}
-	for _, tc := range cases {
-		got := classifyOrchestraPrompt(tc.prompt)
-		if got != tc.want {
-			t.Errorf("classifyOrchestraPrompt(%q) = %q; want %q", tc.prompt, got, tc.want)
-		}
+	if decision.Intent != "inquiry" || decision.Reply != "model answer" {
+		t.Fatalf("unexpected decision: %+v", decision)
+	}
+}
+
+func TestOrchestraPlanManager_FailsClosedWithoutCoordinator(t *testing.T) {
+	mgr := NewOrchestraPlanManager(&mockOrchestraTaskStore{})
+	_, err := mgr.ProposePlan(context.Background(), OrchestraPlanProposalRequest{
+		CorrelationID: "corr-no-brain",
+		ProjectID:     "proj-test",
+		UserPrompt:    "halo",
+		SchemaVersion: OrchestraPlanSchemaVersion,
+	})
+	if !errors.Is(err, ErrOrchestraPlanModelUnavailable) {
+		t.Fatalf("expected model-unavailable error, got %v", err)
 	}
 }
 
