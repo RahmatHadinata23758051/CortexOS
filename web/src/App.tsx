@@ -3,7 +3,8 @@ import { ChevronsLeft, ChevronsRight, Files, Menu, Moon, Network, Settings, Sun,
 
 import { loadRuntimeSnapshot, type RuntimeState } from './bridge/runtime'
 import { loadWorkspaceSnapshot, type WorkspaceState } from './bridge/workspace'
-import { wailsRuntimeBridge, workspaceSchemaVersion } from './types'
+import { onCockpitEvent } from './bridge/events'
+import { ToolApprovalEventNames, wailsRuntimeBridge, workspaceSchemaVersion } from './types'
 import { ProjectPicker, type ProjectFormState } from './picker/ProjectPicker'
 import { FilesView } from './files/FilesView'
 import { ApprovalDrawer } from './office/ApprovalDrawer'
@@ -198,10 +199,14 @@ export function App({ initialRoute, initialTheme, initialProjectId, initialWorks
       }
     }
     void refreshPendingApprovals()
-    const interval = window.setInterval(refreshPendingApprovals, 5000)
+    // Approval count is event-driven: every tool lifecycle change refreshes it,
+    // so no background polling is required.
+    const unsubscribers = Object.values(ToolApprovalEventNames).map((eventName) =>
+      onCockpitEvent(eventName, () => { void refreshPendingApprovals() }),
+    )
     return () => {
       active = false
-      window.clearInterval(interval)
+      unsubscribers.forEach((unsubscribe) => unsubscribe())
     }
   }, [])
 
