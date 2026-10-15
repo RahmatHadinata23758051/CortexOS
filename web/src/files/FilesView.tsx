@@ -11,6 +11,7 @@ import type {
   WorkspaceWorktree,
 } from '../types'
 import { loadFilesListing, readFileContent } from '../bridge/files'
+import { onOrchestraPlanLifecycle } from '../bridge/orchestra-events'
 
 export type FilesArea = FilesContractArea
 
@@ -83,6 +84,15 @@ export function FilesView({ workspace, selectedProjectId, onRefresh, bridge = wa
     setReadState({ status: 'idle' })
     onRefresh()
   }
+
+  // Worker lifecycle events imply writes landed in the worktree; re-list instead
+  // of polling. ponytail: reuses worker events rather than a dedicated
+  // files-changed event. Add EventFilesChanged if non-worker writers appear.
+  useEffect(() => {
+    return onOrchestraPlanLifecycle(() => {
+      setRefreshVersion((value) => value + 1)
+    })
+  }, [])
 
   const handleAreaChange = (nextArea: FilesArea) => {
     setArea(nextArea)
