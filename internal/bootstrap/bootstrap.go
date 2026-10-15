@@ -224,7 +224,12 @@ func Run() error {
 	}
 
 	service := application.NewServiceWithWorkspaceAndOrchestraAndProviderAndBrain(workspaceService, orchestraPort, providerPort, brainPort)
+	if orchestraPort != nil {
+		service.SetOrchestraPlan(application.NewOrchestraPlanManager(orchestraPort))
+		service.SetWorkerLifecycle(application.NewWorkerLifecycleManager(orchestraPort))
+	}
 	service.SetStaff(staffPort)
+	service.SetFiles(application.NewFilesAdapter(workspaceService))
 	knowledgePort, err := bridge.NewWorkspaceKnowledgeAdapter(workspaceService)
 	if err != nil {
 		return err

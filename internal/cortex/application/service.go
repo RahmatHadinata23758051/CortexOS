@@ -39,6 +39,9 @@ type Service struct {
 	toolApproval   ToolApprovalPort
 	coordination   CoordinationPort
 	grounding      KnowledgeGroundingPort
+	plan           OrchestraPlanPort
+	files          FilesPort
+	workers        WorkerLifecyclePort
 }
 
 // NewService creates the minimal Phase 1 application service.
@@ -260,6 +263,98 @@ func (s *Service) SetKnowledgeGrounding(port KnowledgeGroundingPort) {
 	if s != nil {
 		s.grounding = port
 	}
+}
+
+// SetFiles attaches the read-only project Files port.
+func (s *Service) SetFiles(port FilesPort) {
+	if s != nil {
+		s.files = port
+	}
+}
+
+// ListFiles lists a bounded project-scoped file tree.
+func (s *Service) ListFiles(ctx context.Context, request FilesListRequest) (FilesListResult, error) {
+	if s == nil || s.files == nil {
+		return FilesListResult{}, ErrFilesUnavailable
+	}
+	return s.files.ListFiles(ctx, request)
+}
+
+// ReadFile reads a bounded project-scoped file or Vault Markdown document.
+func (s *Service) ReadFile(ctx context.Context, request FilesReadRequest) (FilesReadResult, error) {
+	if s == nil || s.files == nil {
+		return FilesReadResult{}, ErrFilesUnavailable
+	}
+	return s.files.ReadFile(ctx, request)
+}
+
+// SetWorkerLifecycle attaches the ephemeral worker-card projection.
+func (s *Service) SetWorkerLifecycle(port WorkerLifecyclePort) {
+	if s != nil {
+		s.workers = port
+	}
+}
+
+// GetWorkerCards returns active worker cards and optional lifecycle history.
+func (s *Service) GetWorkerCards(ctx context.Context, request WorkerCardsRequest) (WorkerCardsResult, error) {
+	if s == nil || s.workers == nil {
+		return WorkerCardsResult{}, ErrWorkerInvalidRequest
+	}
+	return s.workers.Sync(ctx, request)
+}
+
+// TransitionWorker moves an ephemeral worker card through its governed lifecycle.
+func (s *Service) TransitionWorker(ctx context.Context, workerID string, target WorkerLifecycleState, reason string) (WorkerCard, WorkerLifecycleEvent, error) {
+	if s == nil || s.workers == nil {
+		return WorkerCard{}, WorkerLifecycleEvent{}, ErrWorkerInvalidRequest
+	}
+	return s.workers.Transition(ctx, workerID, target, reason)
+}
+
+// SetOrchestraPlan attaches the Orchestra plan proposal/confirmation port.
+// When unset, plan operations fail closed with a stable error rather than
+// silently auto-dispatching work.
+func (s *Service) SetOrchestraPlan(port OrchestraPlanPort) {
+	if s != nil {
+		s.plan = port
+	}
+}
+
+// ErrOrchestraPlanNotConfigured is returned when the plan port is absent.
+var ErrOrchestraPlanNotConfigured = errors.New("orchestra plan not configured")
+
+// ProposeOrchestraPlan evaluates a user intent and returns an Orchestra plan
+// proposal. Low-risk single-step plans may be auto-dispatched; larger or
+// higher-risk plans are returned as proposals awaiting confirmation.
+func (s *Service) ProposeOrchestraPlan(ctx context.Context, req OrchestraPlanProposalRequest) (OrchestraPlanProposal, error) {
+	if s == nil || s.plan == nil {
+		return OrchestraPlanProposal{}, ErrOrchestraPlanNotConfigured
+	}
+	return s.plan.ProposePlan(ctx, req)
+}
+
+// ConfirmOrchestraPlan accepts a proposed plan and dispatches its tasks.
+func (s *Service) ConfirmOrchestraPlan(ctx context.Context, req OrchestraPlanConfirmRequest) (OrchestraPlanConfirmResult, error) {
+	if s == nil || s.plan == nil {
+		return OrchestraPlanConfirmResult{}, ErrOrchestraPlanNotConfigured
+	}
+	return s.plan.ConfirmPlan(ctx, req)
+}
+
+// RejectOrchestraPlan declines a proposed plan without creating tasks.
+func (s *Service) RejectOrchestraPlan(ctx context.Context, req OrchestraPlanRejectRequest) error {
+	if s == nil || s.plan == nil {
+		return ErrOrchestraPlanNotConfigured
+	}
+	return s.plan.RejectPlan(ctx, req)
+}
+
+// GetOrchestraPlan returns a stored plan proposal by ID.
+func (s *Service) GetOrchestraPlan(ctx context.Context, planID string) (OrchestraPlanProposal, error) {
+	if s == nil || s.plan == nil {
+		return OrchestraPlanProposal{}, ErrOrchestraPlanNotConfigured
+	}
+	return s.plan.GetPlan(ctx, planID)
 }
 
 // GroundRoutingContext generates bounded, metadata-safe retrieval context for routing.

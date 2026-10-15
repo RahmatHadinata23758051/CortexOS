@@ -110,6 +110,75 @@ func (b *Bridge) RouteBrainTaskToOrchestra(request application.BrainOrchestraRou
 	return result, err
 }
 
+// ProposeOrchestraPlan creates an evaluated plan proposal and emits the
+// authoritative plan lifecycle event consumed by both the prompt HUD and the
+// orchestration graph. Low-risk single-step plans are auto-dispatched by the
+// application layer and reported as such.
+func (b *Bridge) ProposeOrchestraPlan(request application.OrchestraPlanProposalRequest) (application.OrchestraPlanProposal, error) {
+	result, err := b.service.ProposeOrchestraPlan(b.getContext(), request)
+	if err == nil && b.emitter != nil {
+		event := EventOrchestraPlanProposed
+		if result.Status == "auto_dispatched" {
+			event = EventOrchestraPlanAutoDispatched
+		}
+		b.emitter.Emit(event, result)
+	}
+	return result, err
+}
+
+// ConfirmOrchestraPlan accepts a proposed plan and dispatches its tasks.
+func (b *Bridge) ConfirmOrchestraPlan(request application.OrchestraPlanConfirmRequest) (application.OrchestraPlanConfirmResult, error) {
+	result, err := b.service.ConfirmOrchestraPlan(b.getContext(), request)
+	if err == nil && b.emitter != nil {
+		b.emitter.Emit(EventOrchestraPlanConfirmed, result)
+	}
+	return result, err
+}
+
+// RejectOrchestraPlan rejects a proposed plan without creating tasks.
+func (b *Bridge) RejectOrchestraPlan(request application.OrchestraPlanRejectRequest) error {
+	err := b.service.RejectOrchestraPlan(b.getContext(), request)
+	if err == nil && b.emitter != nil {
+		b.emitter.Emit(EventOrchestraPlanRejected, request)
+	}
+	return err
+}
+
+// GetOrchestraPlan reads the authoritative plan projection by ID.
+func (b *Bridge) GetOrchestraPlan(request application.OrchestraPlanGetRequest) (application.OrchestraPlanProposal, error) {
+	return b.service.GetOrchestraPlan(b.getContext(), request.PlanID)
+}
+
+// GetWorkerCards returns the authoritative active worker-card projection.
+func (b *Bridge) GetWorkerCards(request application.WorkerCardsRequest) (application.WorkerCardsResult, error) {
+	result, err := b.service.GetWorkerCards(b.getContext(), request)
+	if err == nil && b.emitter != nil {
+		for _, event := range result.Events {
+			if event.To == application.WorkerSpawned {
+				b.emitter.Emit(EventOrchestraWorkerSpawned, event)
+			}
+		}
+	}
+	return result, err
+}
+
+// TransitionWorker updates a worker-card lifecycle state and emits the same
+// authoritative transition consumed by the HUD and graph.
+func (b *Bridge) TransitionWorker(request application.WorkerTransitionRequest) (application.WorkerTransitionResult, error) {
+	card, event, err := b.service.TransitionWorker(b.getContext(), request.WorkerID, request.State, request.Reason)
+	if err != nil {
+		return application.WorkerTransitionResult{}, err
+	}
+	if b.emitter != nil {
+		if event.To == application.WorkerUnspawned {
+			b.emitter.Emit(EventOrchestraWorkerUnspawned, event)
+		} else {
+			b.emitter.Emit(EventOrchestraWorkerUpdated, event)
+		}
+	}
+	return application.WorkerTransitionResult{Worker: card, Event: event, SchemaVersion: application.WorkerLifecycleSchemaVersion}, nil
+}
+
 // ProposeToolCall submits a bounded, redacted tool proposal for operator review
 // and emits EventToolProposed when accepted.
 func (b *Bridge) ProposeToolCall(proposal application.ToolProposal) (application.ToolProposalResult, error) {
@@ -211,6 +280,16 @@ func (b *Bridge) RebuildWorkspaceRetrieval(request application.WorkspaceMutation
 
 func (b *Bridge) RegisterWorkspaceProject(request application.WorkspaceProjectRequest) (application.WorkspaceProject, error) {
 	return b.service.RegisterWorkspaceProject(b.getContext(), request)
+}
+
+// ListFiles exposes bounded, project-scoped file listing for Repository, Support, and Vault.
+func (b *Bridge) ListFiles(request application.FilesListRequest) (application.FilesListResult, error) {
+	return b.service.ListFiles(b.getContext(), request)
+}
+
+// ReadFile exposes bounded, read-only file content for Repository, Support, and Vault.
+func (b *Bridge) ReadFile(request application.FilesReadRequest) (application.FilesReadResult, error) {
+	return b.service.ReadFile(b.getContext(), request)
 }
 
 func (b *Bridge) ListOrchestraTasks(request application.OrchestraTaskListRequest) ([]application.OrchestraTaskSummary, error) {

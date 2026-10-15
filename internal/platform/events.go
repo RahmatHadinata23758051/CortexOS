@@ -54,6 +54,19 @@ const (
 	EventCoordinationCanceled     = "cortexos:coordination:canceled"
 )
 
+// Orchestra plan lifecycle event names emitted across the bridge.
+// Payloads carry stable plan IDs, status codes, and worker cards only;
+// no prompts, provider output, or filesystem paths.
+const (
+	EventOrchestraPlanProposed       = "cortexos:orchestra:plan:proposed"
+	EventOrchestraPlanConfirmed      = "cortexos:orchestra:plan:confirmed"
+	EventOrchestraPlanRejected       = "cortexos:orchestra:plan:rejected"
+	EventOrchestraPlanAutoDispatched = "cortexos:orchestra:plan:auto-dispatched"
+	EventOrchestraWorkerSpawned      = "cortexos:orchestra:worker:spawned"
+	EventOrchestraWorkerUpdated      = "cortexos:orchestra:worker:updated"
+	EventOrchestraWorkerUnspawned    = "cortexos:orchestra:worker:unspawned"
+)
+
 // RuntimeEventHook is a callback function invoked when a bridge runtime event occurs.
 type RuntimeEventHook func(eventName string, payload any)
 

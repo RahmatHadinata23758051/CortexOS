@@ -85,6 +85,13 @@ func (s *Service) ArchiveProject(ctx context.Context, id ProjectID) error {
 	return s.dependencies.Projects.ArchiveProject(ctx, id)
 }
 
+func (s *Service) GetProject(ctx context.Context, id ProjectID) (Project, error) {
+	if err := requireServiceContext(ctx); err != nil {
+		return Project{}, err
+	}
+	return s.dependencies.Projects.GetProject(ctx, id)
+}
+
 func (s *Service) CreateWorktree(ctx context.Context, worktree Worktree) (Worktree, error) {
 	if err := requireServiceContext(ctx); err != nil {
 		return Worktree{}, err
