@@ -167,3 +167,93 @@ func TestBridge_RejectOrchestraPlanEmitsEvent(t *testing.T) {
 		t.Errorf("expected event %q, got %q", EventOrchestraPlanRejected, emittedEvent)
 	}
 }
+
+type planWorkerPortStub struct {
+	syncResult application.WorkerCardsResult
+}
+
+func (w *planWorkerPortStub) Sync(_ context.Context, _ application.WorkerCardsRequest) (application.WorkerCardsResult, error) {
+	return w.syncResult, nil
+}
+
+func (w *planWorkerPortStub) Transition(_ context.Context, _ string, _ application.WorkerLifecycleState, _ string) (application.WorkerCard, application.WorkerLifecycleEvent, error) {
+	return application.WorkerCard{}, application.WorkerLifecycleEvent{}, nil
+}
+
+type planCoordPortStub struct {
+	snapshot application.CoordinationSnapshot
+}
+
+func (c *planCoordPortStub) GetCoordinationSnapshot(_ context.Context, _ application.CoordinationSnapshotRequest) (application.CoordinationSnapshot, error) {
+	return c.snapshot, nil
+}
+
+func TestBridge_AutoDispatchSyncsWorkersAndCoordination(t *testing.T) {
+	service := application.NewService()
+	stub := &planPortStub{
+		proposed: application.OrchestraPlanProposal{
+			PlanID:               "plan-auto-sync",
+			CorrelationID:        "corr-auto-sync",
+			Status:               "auto_dispatched",
+			RequiresConfirmation: false,
+			SchemaVersion:        application.OrchestraPlanSchemaVersion,
+		},
+	}
+	service.SetOrchestraPlan(stub)
+	workerStub := &planWorkerPortStub{
+		syncResult: application.WorkerCardsResult{
+			Workers: []application.WorkerCard{
+				{WorkerID: "w-1", State: application.WorkerSpawned},
+			},
+			Events: []application.WorkerLifecycleEvent{
+				{WorkerID: "w-1", To: application.WorkerSpawned},
+			},
+		},
+	}
+	service.SetWorkerLifecycle(workerStub)
+	coordStub := &planCoordPortStub{
+		snapshot: application.CoordinationSnapshot{
+			ActivePhase: 0,
+			TotalPhases: 1,
+		},
+	}
+	service.SetCoordination(coordStub)
+	b := NewBridge(service)
+
+	emitted := make([]string, 0)
+	b.RegisterEventHook(func(name string, _ any) {
+		emitted = append(emitted, name)
+	})
+
+	_, err := b.ProposeOrchestraPlan(application.OrchestraPlanProposalRequest{
+		CorrelationID: "corr-auto-sync",
+		UserPrompt:    "Inspect file",
+		Title:         "Inspect",
+		ProjectID:     "proj-1",
+		SchemaVersion: application.OrchestraPlanSchemaVersion,
+		Tasks: []application.OrchestraPlanProposedTask{
+			{Index: 0, Title: "Inspect", Role: "reviewer", Action: "inspect", AcceptanceCriteria: []string{"A"}},
+		},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	expectedEvents := []string{
+		EventOrchestraPlanAutoDispatched,
+		EventOrchestraWorkerSpawned,
+		EventCoordinationChanged,
+	}
+	for _, expected := range expectedEvents {
+		found := false
+		for _, e := range emitted {
+			if e == expected {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("expected emitted event %q in %v", expected, emitted)
+		}
+	}
+}

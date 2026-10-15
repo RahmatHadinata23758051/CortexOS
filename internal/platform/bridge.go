@@ -135,6 +135,9 @@ func (b *Bridge) ProposeOrchestraPlan(request application.OrchestraPlanProposalR
 			event = EventOrchestraPlanAutoDispatched
 		}
 		b.emitter.Emit(event, result)
+		if result.Status == "auto_dispatched" {
+			b.syncDispatchedWork(request.ProjectID)
+		}
 	}
 	return result, err
 }
@@ -144,8 +147,37 @@ func (b *Bridge) ConfirmOrchestraPlan(request application.OrchestraPlanConfirmRe
 	result, err := b.service.ConfirmOrchestraPlan(b.getContext(), request)
 	if err == nil && b.emitter != nil {
 		b.emitter.Emit(EventOrchestraPlanConfirmed, result)
+		plan, planErr := b.service.GetOrchestraPlan(b.getContext(), request.PlanID)
+		if planErr == nil {
+			b.syncDispatchedWork(plan.ProjectID)
+		}
 	}
 	return result, err
+}
+
+func (b *Bridge) syncDispatchedWork(projectID string) {
+	ctx := b.getContext()
+	if b.service == nil {
+		return
+	}
+	workerRes, err := b.service.GetWorkerCards(ctx, application.WorkerCardsRequest{
+		SchemaVersion: application.WorkerLifecycleSchemaVersion,
+		ProjectID:     projectID,
+	})
+	if err == nil && b.emitter != nil {
+		for _, event := range workerRes.Events {
+			if event.To == application.WorkerSpawned {
+				b.emitter.Emit(EventOrchestraWorkerSpawned, event)
+			}
+		}
+	}
+	snapshot, err := b.service.GetCoordinationSnapshot(ctx, application.CoordinationSnapshotRequest{
+		SchemaVersion: application.CoordinationSchemaVersion,
+		ProjectID:     projectID,
+	})
+	if err == nil && b.emitter != nil {
+		b.emitter.Emit(EventCoordinationChanged, snapshot)
+	}
 }
 
 // RejectOrchestraPlan rejects a proposed plan without creating tasks.
