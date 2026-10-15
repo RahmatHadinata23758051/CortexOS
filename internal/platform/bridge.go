@@ -171,8 +171,13 @@ func (b *Bridge) syncDispatchedWork(projectID string) {
 	})
 	if err == nil && b.emitter != nil {
 		for _, event := range workerRes.Events {
-			if event.To == application.WorkerSpawned {
+			switch event.To {
+			case application.WorkerSpawned:
 				b.emitter.Emit(EventOrchestraWorkerSpawned, event)
+			case application.WorkerUnspawned:
+				b.emitter.Emit(EventOrchestraWorkerUnspawned, event)
+			default:
+				b.emitter.Emit(EventOrchestraWorkerUpdated, event)
 			}
 		}
 	}
@@ -370,17 +375,41 @@ func (b *Bridge) GetOrchestraTask(request application.OrchestraTaskRequest) (app
 }
 
 func (b *Bridge) CancelOrchestraTask(request application.OrchestraTaskRequest) error {
-	return b.service.CancelOrchestraTask(b.getContext(), request)
+	err := b.service.CancelOrchestraTask(b.getContext(), request)
+	if err == nil {
+		if task, getErr := b.service.GetOrchestraTask(b.getContext(), request); getErr == nil {
+			b.syncDispatchedWork(task.ProjectID)
+		}
+	}
+	return err
 }
 
 func (b *Bridge) RetryOrchestraTask(request application.OrchestraTaskRequest) error {
-	return b.service.RetryOrchestraTask(b.getContext(), request)
+	err := b.service.RetryOrchestraTask(b.getContext(), request)
+	if err == nil {
+		if task, getErr := b.service.GetOrchestraTask(b.getContext(), request); getErr == nil {
+			b.syncDispatchedWork(task.ProjectID)
+		}
+	}
+	return err
 }
 
 // MergeOrchestraTask exposes the Inspector-gated merge command to Wails.
-// Business rules remain in the application and Orchestra layers.
+// Business rules remain in the application and Orchestra layers. A successful
+// merge also refreshes the ephemeral worker projection so review/accept/unspawn
+// state reaches every surface immediately.
 func (b *Bridge) MergeOrchestraTask(request application.OrchestraMergeRequest) (application.OrchestraMergeResult, error) {
-	return b.service.MergeOrchestraTask(b.getContext(), request)
+	result, err := b.service.MergeOrchestraTask(b.getContext(), request)
+	if err != nil {
+		return result, err
+	}
+	if task, getErr := b.service.GetOrchestraTask(b.getContext(), application.OrchestraTaskRequest{
+		SchemaVersion: application.OrchestraBridgeSchemaVersion,
+		TaskID:        request.TaskID,
+	}); getErr == nil {
+		b.syncDispatchedWork(task.ProjectID)
+	}
+	return result, nil
 }
 
 // ListHarnessCapabilities exposes safe Harness capability metadata.
