@@ -146,6 +146,11 @@ func (m *WorkerLifecycleManager) Sync(ctx context.Context, request WorkerCardsRe
 		if target != "" && target != card.State {
 			if canSyncWorkerState(card.State, target) {
 				m.transitionLocked(&card, target, "synchronized from Orchestra task")
+				// A successful task has passed the authoritative merge gate;
+				// accepted workers are ephemeral and leave the active canvas.
+				if target == WorkerAccepted {
+					m.transitionLocked(&card, WorkerUnspawned, "task accepted by Orchestra")
+				}
 				m.workers[workerID] = card
 			}
 		}
