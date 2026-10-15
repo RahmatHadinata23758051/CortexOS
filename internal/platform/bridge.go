@@ -130,6 +130,11 @@ func (b *Bridge) RouteBrainTaskToOrchestra(request application.BrainOrchestraRou
 func (b *Bridge) ProposeOrchestraPlan(request application.OrchestraPlanProposalRequest) (application.OrchestraPlanProposal, error) {
 	result, err := b.service.ProposeOrchestraPlan(b.getContext(), request)
 	if err == nil && b.emitter != nil {
+		// An inquiry is answered by Orchestra directly: no plan, no worker.
+		if result.Status == "answered" {
+			b.emitter.Emit(EventOrchestraReplied, result)
+			return result, err
+		}
 		event := EventOrchestraPlanProposed
 		if result.Status == "auto_dispatched" {
 			event = EventOrchestraPlanAutoDispatched

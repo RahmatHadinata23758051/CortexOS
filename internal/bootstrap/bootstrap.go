@@ -225,7 +225,9 @@ func Run() error {
 
 	service := application.NewServiceWithWorkspaceAndOrchestraAndProviderAndBrain(workspaceService, orchestraPort, providerPort, brainPort)
 	if orchestraPort != nil {
-		service.SetOrchestraPlan(application.NewOrchestraPlanManager(orchestraPort))
+		planManager := application.NewOrchestraPlanManager(orchestraPort)
+		planManager.SetBrain(brainPort)
+		service.SetOrchestraPlan(planManager)
 		service.SetWorkerLifecycle(application.NewWorkerLifecycleManager(orchestraPort))
 	}
 	service.SetStaff(staffPort)

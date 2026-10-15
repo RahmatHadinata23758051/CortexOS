@@ -284,6 +284,86 @@ func TestOrchestraPlanManager_RejectFlow(t *testing.T) {
 	}
 }
 
+func TestOrchestraPlanManager_InquiryDoesNotSpawnWorkers(t *testing.T) {
+	mockStore := &mockOrchestraTaskStore{}
+	mgr := NewOrchestraPlanManager(mockStore)
+
+	ctx := context.Background()
+	req := OrchestraPlanProposalRequest{
+		CorrelationID: "corr-inquiry-1",
+		ProjectID:     "proj-test",
+		UserPrompt:    "halo",
+		SchemaVersion: OrchestraPlanSchemaVersion,
+	}
+
+	proposal, err := mgr.ProposePlan(ctx, req)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if proposal.Status != "answered" {
+		t.Errorf("expected status 'answered', got %q", proposal.Status)
+	}
+	if proposal.Reply == "" {
+		t.Errorf("expected non-empty reply")
+	}
+	if len(mockStore.tasks) != 0 {
+		t.Fatalf("expected 0 tasks created in Orchestra store, got %d", len(mockStore.tasks))
+	}
+	if len(proposal.DispatchedTaskIDs) != 0 {
+		t.Fatalf("expected 0 dispatched tasks, got %d", len(proposal.DispatchedTaskIDs))
+	}
+}
+
+func TestOrchestraPlanManager_ActionPromptWithoutTasksAutoDerivesAndDispatches(t *testing.T) {
+	mockStore := &mockOrchestraTaskStore{}
+	mgr := NewOrchestraPlanManager(mockStore)
+
+	ctx := context.Background()
+	req := OrchestraPlanProposalRequest{
+		CorrelationID: "corr-action-1",
+		ProjectID:     "proj-test",
+		UserPrompt:    "buat sistem inventory baru",
+		SchemaVersion: OrchestraPlanSchemaVersion,
+	}
+
+	proposal, err := mgr.ProposePlan(ctx, req)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if proposal.Status != "auto_dispatched" {
+		t.Errorf("expected status 'auto_dispatched', got %q", proposal.Status)
+	}
+	if len(mockStore.tasks) != 1 {
+		t.Fatalf("expected 1 task created, got %d", len(mockStore.tasks))
+	}
+	if mockStore.tasks[0].AssignedStaffID != "implementer-1" {
+		t.Errorf("expected call sign implementer-1, got %q", mockStore.tasks[0].AssignedStaffID)
+	}
+}
+
+func TestClassifyOrchestraPrompt(t *testing.T) {
+	cases := []struct {
+		prompt string
+		want   string
+	}{
+		{"halo", "inquiry"},
+		{"Halo bro!", "inquiry"},
+		{"apa kabar?", "inquiry"},
+		{"apa fungsi orchestra?", "inquiry"},
+		{"buatkan modul baru", "action"},
+		{"fix bug di platform", "action"},
+		{"refactor service code", "action"},
+	}
+	for _, tc := range cases {
+		got := classifyOrchestraPrompt(tc.prompt)
+		if got != tc.want {
+			t.Errorf("classifyOrchestraPrompt(%q) = %q; want %q", tc.prompt, got, tc.want)
+		}
+	}
+}
+
 func TestOrchestraPlanManager_BoundedCapacity(t *testing.T) {
 	mgr := NewOrchestraPlanManager(nil)
 	ctx := context.Background()

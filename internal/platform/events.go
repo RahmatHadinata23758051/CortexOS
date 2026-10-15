@@ -62,6 +62,7 @@ const (
 	EventOrchestraPlanConfirmed      = "cortexos:orchestra:plan:confirmed"
 	EventOrchestraPlanRejected       = "cortexos:orchestra:plan:rejected"
 	EventOrchestraPlanAutoDispatched = "cortexos:orchestra:plan:auto-dispatched"
+	EventOrchestraReplied            = "cortexos:orchestra:replied"
 	EventOrchestraWorkerSpawned      = "cortexos:orchestra:worker:spawned"
 	EventOrchestraWorkerUpdated      = "cortexos:orchestra:worker:updated"
 	EventOrchestraWorkerUnspawned    = "cortexos:orchestra:worker:unspawned"
