@@ -62,6 +62,7 @@ function getWailsBridge(): FullBridge {
 
 export const wailsRuntimeBridge: FullBridge = {
   GetRuntimeSnapshot: (request) => getWailsBridge().GetRuntimeSnapshot(request),
+  PickDirectory: () => getWailsBridge().PickDirectory(),
   GetWorkspaceSnapshot: (request) => getWailsBridge().GetWorkspaceSnapshot(request),
   QueryWorkspace: (request) => getWailsBridge().QueryWorkspace(request),
   RebuildWorkspaceRetrieval: (request) => getWailsBridge().RebuildWorkspaceRetrieval(request),

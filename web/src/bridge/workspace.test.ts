@@ -4,6 +4,7 @@ import { loadWorkspaceSnapshot, queryWorkspace } from './workspace'
 import { workspaceSchemaVersion, type WorkspaceBridge } from '../types'
 
 const bridge = (): WorkspaceBridge => ({
+  PickDirectory: vi.fn().mockResolvedValue(''),
   GetWorkspaceSnapshot: vi.fn().mockResolvedValue({
     schemaVersion: workspaceSchemaVersion,
     projects: [],

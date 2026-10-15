@@ -7,7 +7,7 @@ import { App } from './App'
 import { FilesView } from './files/FilesView'
 import { ProjectPicker } from './picker/ProjectPicker'
 
-const form = { id: '', name: '', repositoryRoot: '', vaultRoot: '', defaultBranch: 'main' }
+const form = { id: '', name: '', repositoryRoot: '', defaultBranch: 'main' }
 const emptyWorkspace = {
   status: 'success' as const,
   snapshot: {
@@ -43,6 +43,7 @@ const pickerProps = {
   onSubmit: () => {},
   onUpdateForm: () => {},
   onResetForm: () => {},
+  onPickFolder: async () => {},
 }
 
 describe('Phase A app shell', () => {
@@ -56,6 +57,7 @@ describe('Phase A app shell', () => {
   it('renders honest empty and offline picker states', () => {
     const empty = renderToStaticMarkup(<ProjectPicker {...pickerProps} />)
     expect(empty).toContain('No projects registered yet')
+    expect(empty).not.toContain('Vault Root')
 
     const offline = renderToStaticMarkup(<ProjectPicker {...pickerProps} runtime={{ status: 'error', message: 'Bridge unavailable' }} />)
     expect(offline).toContain('Runtime bridge is disconnected')
