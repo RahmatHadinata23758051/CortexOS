@@ -179,7 +179,12 @@ func (s *ExecutionSandbox) ValidatePaths(paths []string) ([]string, error) {
 // ValidateArgs rejects shell syntax, traversal, and absolute paths outside the
 // worktree. Adapters should pass argv, never a shell command line.
 func (s *ExecutionSandbox) ValidateArgs(args []string, _ []string) error {
-	for _, arg := range args {
+	for i, arg := range args {
+		// These flags intentionally carry free-form text as one argv value. They
+		// are not shell commands or paths, so shell metacharacters are inert.
+		if i > 0 && (args[i-1] == "--system-prompt" || args[i-1] == "--append-system-prompt") {
+			continue
+		}
 		if containsShellMeta(arg) || strings.Contains(arg, "..") {
 			return fmt.Errorf("%w: unsafe argument", ErrWorktreeViolation)
 		}
