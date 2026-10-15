@@ -14,6 +14,7 @@ type HudState =
   | { status: 'confirming'; proposal: OrchestraPlanProposal }
   | { status: 'rejecting'; proposal: OrchestraPlanProposal }
   | { status: 'dispatched'; proposal: OrchestraPlanProposal; message: string }
+  | { status: 'answered'; proposal: OrchestraPlanProposal; message: string }
   | { status: 'error'; message: string }
 
 type PlanDraft = {
@@ -86,14 +87,18 @@ export function OrchestraPromptHud({ projectId, bridge }: OrchestraPromptHudProp
         correlationId: `ui-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
         projectId,
         userPrompt,
-        title: nextDraft.title,
-        tasks: [task],
+        title: showDetails ? nextDraft.title : '',
+        // Empty tasks lets Orchestra classify greetings/questions as inquiries.
+        // Explicit plan details opt into a caller-supplied action task.
+        tasks: showDetails ? [task] : [],
         schemaVersion: orchestraPlanSchemaVersion,
       })
       setDraft(nextDraft)
-      setState(nextProposal.requiresConfirmation && nextProposal.status === 'proposed'
-        ? { status: 'proposal', proposal: nextProposal }
-        : { status: 'dispatched', proposal: nextProposal, message: 'Orchestra accepted the request and dispatched the work.' })
+      setState(nextProposal.status === 'answered'
+        ? { status: 'answered', proposal: nextProposal, message: nextProposal.reply || nextProposal.summary }
+        : nextProposal.requiresConfirmation && nextProposal.status === 'proposed'
+          ? { status: 'proposal', proposal: nextProposal }
+          : { status: 'dispatched', proposal: nextProposal, message: 'Orchestra accepted the request and dispatched the work.' })
     } catch (error) {
       setState({ status: 'error', message: error instanceof Error ? error.message : 'Orchestra could not create a plan.' })
     }
@@ -155,7 +160,8 @@ export function OrchestraPromptHud({ projectId, bridge }: OrchestraPromptHudProp
         </div>
       </form>
       {state.status === 'error' && <div className="prompt-feedback prompt-feedback-error" role="alert">{state.message}</div>}
-      {proposal && <PlanProposal proposal={proposal} busy={busy} onConfirm={confirm} onReject={reject} dispatched={state.status === 'dispatched'} />}
+      {state.status === 'answered' && <div className="prompt-feedback prompt-feedback-success" role="status">{state.message}</div>}
+      {proposal && state.status !== 'answered' && <PlanProposal proposal={proposal} busy={busy} onConfirm={confirm} onReject={reject} dispatched={state.status === 'dispatched'} />}
     </section>
   )
 }
