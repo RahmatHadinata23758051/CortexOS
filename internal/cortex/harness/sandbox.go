@@ -28,7 +28,7 @@ type SandboxConfig struct {
 
 func DefaultSandboxConfig() SandboxConfig {
 	return SandboxConfig{
-		AllowedEnvVars:          []string{"PATH", "HOME", "USER", "USERPROFILE", "TEMP", "TMP", "LANG", "LC_ALL"},
+		AllowedEnvVars:          []string{"PATH", "HOME", "USER", "USERPROFILE", "TEMP", "TMP", "LANG", "LC_ALL", "SYSTEMROOT", "COMSPEC", "PATHEXT", "WINDIR", "APPDATA", "LOCALAPPDATA"},
 		StdoutLimitBytes:        1024 * 1024,
 		StderrLimitBytes:        512 * 1024,
 		Timeout:                 120 * time.Second,
