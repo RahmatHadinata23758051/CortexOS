@@ -80,24 +80,24 @@ func TestWorkerLifecycleManager_UnspawnFlow(t *testing.T) {
 	mgr := NewWorkerLifecycleManager(tasks)
 	ctx := context.Background()
 
-	_, err := mgr.Sync(ctx, WorkerCardsRequest{
+	// A merged task is authoritative: sync records accepted -> unspawned.
+	merged, err := mgr.Sync(ctx, WorkerCardsRequest{
 		SchemaVersion: WorkerLifecycleSchemaVersion,
 		ProjectID:     "proj-beta",
 	})
 	if err != nil {
 		t.Fatalf("unexpected sync error: %v", err)
 	}
+	if len(merged.Events) != 3 {
+		t.Fatalf("expected spawned/accepted/unspawned events, got %d", len(merged.Events))
+	}
+	if merged.Events[1].To != WorkerAccepted || merged.Events[2].To != WorkerUnspawned {
+		t.Errorf("expected accepted then unspawned, got %s then %s", merged.Events[1].To, merged.Events[2].To)
+	}
 
-	// Transition to unspawned
-	card, event, err := mgr.Transition(ctx, "worker-task-20", WorkerUnspawned, "task accepted by Orchestra")
-	if err != nil {
+	// Explicit unspawn on an already-terminal worker is a stable no-op.
+	if _, _, err := mgr.Transition(ctx, "worker-task-20", WorkerUnspawned, "task accepted by Orchestra"); err != nil {
 		t.Fatalf("unexpected transition error: %v", err)
-	}
-	if card.State != WorkerUnspawned {
-		t.Errorf("expected state unspawned, got %s", card.State)
-	}
-	if event.To != WorkerUnspawned {
-		t.Errorf("expected event to unspawned, got %s", event.To)
 	}
 
 	// Active list without history should omit unspawned worker
