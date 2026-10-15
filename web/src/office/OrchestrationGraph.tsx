@@ -1,10 +1,10 @@
 import { useMemo, type CSSProperties } from 'react'
-import type { StaffSummary } from '../types/office'
-import type { CoordinationSnapshot, StaffAssignmentStatus } from '../types/coordination'
+import type { CoordinationSnapshot, CoordinationTask } from '../types/coordination'
 
 export interface OrchestrationGraphProps {
   snapshot: CoordinationSnapshot
-  staff?: readonly StaffSummary[]
+  /** @deprecated Staff profiles are intentionally not rendered in the execution graph. */
+  staff?: readonly unknown[]
   onSelectTask?: (taskId: string) => void
   onSelectStaff?: (staffId: string) => void
   className?: string
@@ -14,19 +14,21 @@ type GraphZone = 'coordination' | 'planning' | 'delivery' | 'review'
 type GraphStatus = 'available' | 'busy' | 'unavailable' | 'offline' | 'error'
 
 type GraphNode = {
-  staff: StaffSummary
-  assignment?: StaffAssignmentStatus
-  parentId?: string
+  id: string
+  title: string
+  role: string
   zone: GraphZone
   level: number
   status: GraphStatus
-  profile: string
-  currentTaskId?: string
+  statusLabel: string
+  meta: string
+  detail: string
+  task?: CoordinationTask
 }
 
 type GraphEdge = {
   id: string
-  kind: 'delegates' | 'assigns' | 'handoff'
+  kind: 'dispatch' | 'dependency'
   path: string
   label: string
   labelX: number
@@ -36,6 +38,7 @@ type GraphEdge = {
 
 type Position = { x: number; y: number }
 
+const ROOT_ID = 'orchestra-root'
 const CARD_WIDTH = 280
 const CARD_HEIGHT = 100
 const HORIZONTAL_GAP = 80
@@ -54,167 +57,143 @@ const ZONE_LABELS: Record<GraphZone, string> = {
   delivery: 'Delivery',
   review: 'Review',
 }
-const ROLE_ZONES: Record<StaffSummary['role'], GraphZone> = {
-  coordinator: 'coordination',
-  planner: 'planning',
-  implementer: 'delivery',
-  reviewer: 'review',
-  specialist: 'review',
+
+function roleForTask(task: CoordinationTask): string {
+  const explicit = (task.assignedStaffRole ?? '').trim().toLowerCase()
+  if (explicit) return explicit
+  // ponytail: Orchestra tasks carry no role field; derive it from the call sign stem (e.g. "implementer-1" -> "implementer"). Upgrade path: add a role field to orchestra.Task.
+  const callSign = (task.assignedStaffId ?? '').trim().toLowerCase()
+  return callSign.replace(/-\d+$/, '')
 }
 
-function getFallbackParent(staff: readonly StaffSummary[], member: StaffSummary) {
-  if (member.parentId !== undefined) return member.parentId ?? undefined
-  const coordinator = staff.find((candidate) => candidate.role === 'coordinator')
-  if (!coordinator || coordinator.id === member.id) return undefined
-  if (member.role === 'planner' || member.role === 'reviewer') return coordinator.id
-  if (member.role === 'implementer' || member.role === 'specialist') {
-    return staff.find((candidate) => candidate.role === 'planner')?.id ?? coordinator.id
+function zoneForTask(task: CoordinationTask): GraphZone {
+  const role = roleForTask(task)
+  if (role === 'coordinator') return 'coordination'
+  if (role === 'planner') return 'planning'
+  if (role === 'reviewer' || role === 'specialist') return 'review'
+  return 'delivery'
+}
+
+function statusForTask(task: CoordinationTask): GraphStatus {
+  if (task.isBlocked || task.status === 'canceled') return 'unavailable'
+  if (task.status === 'failed') return 'error'
+  if (task.status === 'running' || task.status === 'awaitingInspection') return 'busy'
+  return 'available'
+}
+
+function statusLabelForTask(task: CoordinationTask): string {
+  if (task.isBlocked) return 'BLOCKED'
+  switch (task.status) {
+    case 'awaitingInspection': return 'REVIEW'
+    case 'running': return 'RUNNING'
+    case 'ready': return 'READY'
+    case 'draft': return 'QUEUED'
+    case 'failed': return 'FAILED'
+    default: return task.status.toUpperCase()
   }
-  return undefined
 }
 
-function statusFor(member: StaffSummary, assignment?: StaffAssignmentStatus): GraphStatus {
-  if (assignment?.state === 'failed') return 'error'
-  if (member.availability === 'busy' || assignment?.state === 'running') return 'busy'
-  if (member.availability === 'available') return 'available'
-  return member.availability
+function activeTasks(snapshot: CoordinationSnapshot): CoordinationTask[] {
+  return snapshot.tasks
+    .filter((task) => task.status !== 'success' && task.status !== 'canceled')
+    .sort((a, b) => a.phase - b.phase || a.id.localeCompare(b.id))
+}
+
+function buildGraph(snapshot: CoordinationSnapshot) {
+  const tasks = activeTasks(snapshot)
+  const nodes: GraphNode[] = [
+    {
+      id: ROOT_ID,
+      title: 'Orchestra',
+      role: 'coordinator',
+      zone: 'coordination',
+      level: 0,
+      status: tasks.length > 0 ? 'busy' : 'available',
+      statusLabel: tasks.length > 0 ? 'DISPATCHING' : 'IDLE',
+      meta: tasks.length > 0 ? `${tasks.length} ACTIVE TASK${tasks.length === 1 ? '' : 'S'}` : 'NO ACTIVE WORK',
+      detail: tasks.length > 0 ? 'Execution authority' : 'Ready for a command',
+    },
+    ...tasks.map((task) => ({
+      id: task.id,
+      title: task.title,
+      role: roleForTask(task),
+      zone: zoneForTask(task),
+      level: Math.max(1, task.phase + 1),
+      status: statusForTask(task),
+      statusLabel: statusLabelForTask(task),
+      meta: `${task.assignedStaffId || 'UNASSIGNED'} · PHASE ${task.phase + 1}`,
+      detail: `${Math.round(task.progress)}% · ATTEMPT ${task.attempt}/${task.maxAttempts}`,
+      task,
+    })),
+  ]
+
+  const byLevel = new Map<number, GraphNode[]>()
+  nodes.forEach((node) => {
+    const level = byLevel.get(node.level) ?? []
+    level.push(node)
+    byLevel.set(node.level, level)
+  })
+  const maxPerLevel = Math.max(...Array.from(byLevel.values()).map((level) => level.length), 1)
+  const width = Math.max(1040, LEFT * 2 + maxPerLevel * CARD_WIDTH + (maxPerLevel - 1) * HORIZONTAL_GAP)
+  const positions = new Map<string, Position>()
+  byLevel.forEach((levelNodes, level) => {
+    const rowWidth = levelNodes.length * CARD_WIDTH + (levelNodes.length - 1) * HORIZONTAL_GAP
+    const start = Math.max(LEFT, (width - rowWidth) / 2)
+    levelNodes.forEach((node, index) => {
+      positions.set(node.id, { x: start + index * (CARD_WIDTH + HORIZONTAL_GAP), y: TOP + level * (CARD_HEIGHT + VERTICAL_GAP) })
+    })
+  })
+
+  const height = Math.max(520, TOP + (Math.max(...nodes.map((node) => node.level), 0) + 1) * (CARD_HEIGHT + VERTICAL_GAP) + 92)
+  const edges: GraphEdge[] = []
+  let sequence = 0
+  tasks.forEach((task) => {
+    const child = positions.get(task.id)
+    if (!child) return
+    const dependencies = task.dependencies.filter((id) => positions.has(id))
+    const parents = dependencies.length > 0 ? dependencies : [ROOT_ID]
+    parents.forEach((parentId) => {
+      const parent = positions.get(parentId)
+      if (!parent) return
+      const startX = parent.x + CARD_WIDTH / 2
+      const startY = parent.y + CARD_HEIGHT
+      const endX = child.x + CARD_WIDTH / 2
+      const endY = child.y
+      const busY = startY + VERTICAL_GAP / 2
+      const kind = parentId === ROOT_ID ? 'dispatch' : 'dependency'
+      edges.push({
+        id: `${parentId}->${task.id}`,
+        kind,
+        path: `M ${startX} ${startY} V ${busY} H ${endX} V ${endY}`,
+        label: kind === 'dispatch' ? 'DISPATCH' : 'DEPENDS ON',
+        labelX: (startX + endX) / 2,
+        labelY: busY - 6,
+        sequence: sequence++,
+      })
+    })
+  })
+
+  return { nodes, positions, edges, width, height }
 }
 
 function statusLabel(status: GraphStatus) {
   return status === 'error' ? 'ERROR' : status.toUpperCase()
 }
 
-function measureTree(id: string, children: Map<string, string[]>, seen = new Set<string>()): number {
-  if (seen.has(id)) return CARD_WIDTH
-  const nextSeen = new Set(seen).add(id)
-  const childWidths = (children.get(id) ?? []).map((child) => measureTree(child, children, nextSeen))
-  if (childWidths.length === 0) return CARD_WIDTH
-  return Math.max(CARD_WIDTH, childWidths.reduce((sum, width) => sum + width, 0) + HORIZONTAL_GAP * (childWidths.length - 1))
-}
-
-function buildGraph(snapshot: CoordinationSnapshot, staff: readonly StaffSummary[]) {
-  const assignments = new Map(snapshot.assignments.map((assignment) => [assignment.staffId, assignment]))
-  const nodes: GraphNode[] = staff.map((member) => {
-    const assignment = assignments.get(member.id)
-    return {
-      staff: member,
-      assignment,
-      parentId: getFallbackParent(staff, member),
-      zone: ROLE_ZONES[member.role],
-      level: 0,
-      status: statusFor(member, assignment),
-      profile: member.profile ?? 'default',
-      currentTaskId: assignment?.currentTaskId,
-    }
-  })
-  const byId = new Map(nodes.map((node) => [node.staff.id, node]))
-  const children = new Map<string, string[]>()
-  nodes.forEach((node) => {
-    if (node.parentId && byId.has(node.parentId)) {
-      const siblings = children.get(node.parentId) ?? []
-      siblings.push(node.staff.id)
-      children.set(node.parentId, siblings)
-    } else {
-      node.parentId = undefined
-    }
-  })
-
-  const roots = nodes.filter((node) => !node.parentId)
-  const positions = new Map<string, Position>()
-  let cursor = LEFT
-  const layout = (node: GraphNode, left: number, level: number) => {
-    node.level = level
-    const width = measureTree(node.staff.id, children)
-    const childIds = children.get(node.staff.id) ?? []
-    if (childIds.length === 0) {
-      positions.set(node.staff.id, { x: left, y: TOP + level * (CARD_HEIGHT + VERTICAL_GAP) })
-      return width
-    }
-    let childLeft = left
-    childIds.forEach((childId) => {
-      const childWidth = measureTree(childId, children)
-      layout(byId.get(childId)!, childLeft, level + 1)
-      childLeft += childWidth + HORIZONTAL_GAP
-    })
-    const first = positions.get(childIds[0])!
-    const last = positions.get(childIds[childIds.length - 1])!
-    positions.set(node.staff.id, {
-      x: (first.x + last.x + CARD_WIDTH) / 2 - CARD_WIDTH / 2,
-      y: TOP + level * (CARD_HEIGHT + VERTICAL_GAP),
-    })
-    return width
-  }
-  roots.forEach((root) => {
-    const width = layout(root, cursor, 0)
-    cursor += width + HORIZONTAL_GAP
-  })
-
-  const maxLevel = nodes.reduce((max, node) => Math.max(max, node.level), 0)
-  const width = Math.max(1040, cursor + LEFT - HORIZONTAL_GAP)
-  const height = Math.max(520, TOP + (maxLevel + 1) * (CARD_HEIGHT + VERTICAL_GAP) + 92)
-  const edges: GraphEdge[] = []
-  let sequence = 0
-  nodes.forEach((node) => {
-    if (!node.parentId) return
-    const parent = positions.get(node.parentId)
-    const child = positions.get(node.staff.id)
-    if (!parent || !child) return
-    const startX = parent.x + CARD_WIDTH / 2
-    const startY = parent.y + CARD_HEIGHT
-    const endX = child.x + CARD_WIDTH / 2
-    const endY = child.y
-    const busY = startY + VERTICAL_GAP / 2
-    const kind = node.staff.role === 'implementer' || node.staff.role === 'specialist' ? 'assigns' : 'delegates'
-    edges.push({
-      id: `${node.parentId}->${node.staff.id}`,
-      kind,
-      path: `M ${startX} ${startY} V ${busY} H ${endX} V ${endY}`,
-      label: kind === 'assigns' ? 'ASSIGNS WORK' : 'DELEGATES',
-      labelX: (startX + endX) / 2,
-      labelY: busY - 6,
-      sequence: sequence++,
-    })
-  })
-
-  const worker = nodes.find((node) => node.staff.role === 'implementer')
-  const reviewer = nodes.find((node) => node.staff.role === 'reviewer')
-  if (worker && reviewer && worker.staff.id !== reviewer.staff.id) {
-    const from = positions.get(worker.staff.id)
-    const to = positions.get(reviewer.staff.id)
-    if (from && to) {
-      const startX = from.x + CARD_WIDTH
-      const startY = from.y + CARD_HEIGHT / 2
-      const endX = to.x + CARD_WIDTH / 2
-      const endY = to.y + CARD_HEIGHT
-      const elbowX = Math.max(startX + 60, endX)
-      edges.push({
-        id: `${worker.staff.id}->${reviewer.staff.id}:handoff`,
-        kind: 'handoff',
-        path: `M ${startX} ${startY} H ${elbowX} V ${endY} H ${endX}`,
-        label: 'REVIEW HANDOFF',
-        labelX: (startX + elbowX) / 2,
-        labelY: startY - 8,
-        sequence: sequence++,
-      })
-    }
-  }
-
-  return { nodes, positions, edges, width, height }
-}
-
-export function OrchestrationGraph({ snapshot, staff = [], onSelectTask, onSelectStaff, className = '' }: OrchestrationGraphProps) {
-  const graph = useMemo(() => buildGraph(snapshot, staff), [snapshot, staff])
+export function OrchestrationGraph({ snapshot, onSelectTask, className = '' }: OrchestrationGraphProps) {
+  const graph = useMemo(() => buildGraph(snapshot), [snapshot])
   const { nodes, positions, edges, width, height } = graph
   const maxLevel = nodes.reduce((max, node) => Math.max(max, node.level), 0)
-  const laneLabels = Array.from({ length: maxLevel + 1 }, (_, level) => {
-    const role = level === 0 ? 'COORDINATOR' : level === 1 ? 'LEADS' : 'WORKERS'
-    return { level, label: `L${level} · ${role}` }
-  })
+  const laneLabels = Array.from({ length: maxLevel + 1 }, (_, level) => ({
+    level,
+    label: level === 0 ? 'L0 · ORCHESTRA' : `L${level} · EXECUTION`,
+  }))
 
   return (
-    <section className={`orchestration-graph ${className}`} aria-label="Orchestration hierarchy graph">
+    <section className={`orchestration-graph ${className}`} aria-label="Orchestra execution graph">
       <div className="hierarchy-graph-toolbar">
         <span>GRAPH · {nodes.length} NODES · {edges.length} EDGES</span>
+        <span>{nodes.length === 1 ? 'IDLE' : 'LIVE EXECUTION'}</span>
       </div>
       <div className="hierarchy-graph-viewport">
         <div className="hierarchy-graph-canvas" style={{ width, minHeight: height }}>
@@ -234,7 +213,7 @@ export function OrchestrationGraph({ snapshot, staff = [], onSelectTask, onSelec
             </defs>
             {edges.map((edge) => (
               <g key={edge.id} className={`hierarchy-edge hierarchy-edge-${edge.kind}`}>
-                <path d={edge.path} markerEnd={`url(#hierarchy-arrow${edge.kind === 'handoff' ? '-violet' : ''})`} />
+                <path d={edge.path} markerEnd={`url(#hierarchy-arrow${edge.kind === 'dependency' ? '-violet' : ''})`} />
                 <text x={edge.labelX} y={edge.labelY}>{edge.label}</text>
                 <circle className="hierarchy-dispatch" r="4">
                   <animateMotion dur="4s" begin={`${edge.sequence * 0.64}s`} repeatCount="indefinite" path={edge.path} />
@@ -244,7 +223,7 @@ export function OrchestrationGraph({ snapshot, staff = [], onSelectTask, onSelec
           </svg>
           <div className="hierarchy-nodes">
             {nodes.map((node, index) => {
-              const position = positions.get(node.staff.id)
+              const position = positions.get(node.id)
               if (!position) return null
               const style = {
                 left: position.x,
@@ -253,36 +232,31 @@ export function OrchestrationGraph({ snapshot, staff = [], onSelectTask, onSelec
                 '--beat': node.status === 'busy' ? '1.2s' : '2.4s',
                 '--phase': `${index * -0.37}s`,
               } as CSSProperties
-              const taskId = node.currentTaskId
               return (
                 <button
-                  key={node.staff.id}
+                  key={node.id}
                   type="button"
                   className={`hierarchy-node hierarchy-node-${node.status}`}
                   style={style}
-                  aria-label={`${node.staff.name}, ${node.staff.role}, ${node.status}`}
-                  title={`${node.staff.name} · ${node.staff.role} · ${statusLabel(node.status)}`}
-                  onClick={() => {
-                    onSelectStaff?.(node.staff.id)
-                    if (taskId) onSelectTask?.(taskId)
-                  }}
+                  aria-label={`${node.title}, ${node.role}, ${node.statusLabel}`}
+                  title={`${node.title} · ${node.statusLabel}`}
+                  onClick={() => { if (node.task) onSelectTask?.(node.task.id) }}
                 >
                   <span className="hierarchy-avatar-wrap" aria-hidden="true">
-                    <span className="hierarchy-avatar">{node.staff.name.slice(0, 1).toUpperCase()}</span>
+                    <span className="hierarchy-avatar">{node.task ? 'W' : 'O'}</span>
                   </span>
                   <span className="hierarchy-node-copy">
                     <span className="hierarchy-node-title">
-                      <strong>{node.staff.name}</strong>
-                      <span className="hierarchy-status">{statusLabel(node.status)}</span>
+                      <strong>{node.title}</strong>
+                      <span className="hierarchy-status">{node.task ? node.statusLabel : statusLabel(node.status)}</span>
                     </span>
-                    <span className="hierarchy-node-meta">{node.staff.role.toUpperCase()} · {node.profile}</span>
-                    <span className="hierarchy-node-zone"><i />{ZONE_LABELS[node.zone].toUpperCase()}</span>
+                    <span className="hierarchy-node-meta">{node.role.toUpperCase()} · {node.meta}</span>
+                    <span className="hierarchy-node-zone"><i />{node.detail}</span>
                   </span>
                 </button>
               )
             })}
           </div>
-          {nodes.length === 0 && <p className="hierarchy-empty">No staff hierarchy is available from the connected runtime.</p>}
           <div className="hierarchy-legend">
             <div className="hierarchy-zone-legend">
               <span className="hierarchy-legend-label">ZONES</span>
@@ -293,7 +267,7 @@ export function OrchestrationGraph({ snapshot, staff = [], onSelectTask, onSelec
             <div className="hierarchy-animation-legend">
               <span>◯ Heartbeat = node alive</span>
               <span>● Dot = task dispatch</span>
-              <span>--- Review handoff</span>
+              <span>--- Dependency = waiting on prior work</span>
             </div>
           </div>
         </div>
