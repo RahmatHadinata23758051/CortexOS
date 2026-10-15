@@ -29,6 +29,7 @@ type ProductionAdapterConfig struct {
 	WorktreeInspector WorktreeInspector
 	Inspector         Inspector
 	Logger            logging.Logger
+	Dispatcher        *Dispatcher
 }
 
 // ProductionAdapter implements application.OrchestraPort using real SQLite persistence,
@@ -40,6 +41,7 @@ type ProductionAdapter struct {
 	worktrees   WorktreeInspector
 	inspector   Inspector
 	logger      logging.Logger
+	dispatcher  *Dispatcher
 	mergeMu     sync.Mutex
 	activeMerge map[TaskID]struct{}
 }
@@ -67,8 +69,35 @@ func NewProductionAdapter(config ProductionAdapterConfig) (*ProductionAdapter, e
 		worktrees:   config.WorktreeInspector,
 		inspector:   config.Inspector,
 		logger:      config.Logger,
+		dispatcher:  config.Dispatcher,
 		activeMerge: make(map[TaskID]struct{}),
 	}, nil
+}
+
+// SetDispatcher configures the background task dispatcher.
+func (a *ProductionAdapter) SetDispatcher(d *Dispatcher) {
+	a.mergeMu.Lock()
+	defer a.mergeMu.Unlock()
+	a.dispatcher = d
+}
+
+// Dispatcher returns the configured background task dispatcher.
+func (a *ProductionAdapter) Dispatcher() *Dispatcher {
+	a.mergeMu.Lock()
+	defer a.mergeMu.Unlock()
+	return a.dispatcher
+}
+
+func (a *ProductionAdapter) triggerDispatch(id TaskID) {
+	a.mergeMu.Lock()
+	d := a.dispatcher
+	a.mergeMu.Unlock()
+	if d == nil {
+		return
+	}
+	go func(tid TaskID) {
+		_, _ = d.Dispatch(context.Background(), tid)
+	}(id)
 }
 
 // ListTasks returns all tasks from the durable store.
@@ -137,14 +166,18 @@ func (a *ProductionAdapter) RetryTask(ctx context.Context, id TaskID) error {
 	if err := a.tasks.SaveTask(ctx, res.Task); err != nil {
 		return err
 	}
-	return a.tasks.AppendEvent(ctx, TaskEvent{
+	if err := a.tasks.AppendEvent(ctx, TaskEvent{
 		TaskID:     id,
 		Type:       EventTaskRetryRequested,
 		From:       task.Status,
 		To:         res.Task.Status,
 		Message:    "task retry requested",
 		OccurredAt: time.Now().UTC(),
-	})
+	}); err != nil {
+		return err
+	}
+	a.triggerDispatch(id)
+	return nil
 }
 
 // CreateTask persists a new draft task through Orchestra's authoritative task store.
@@ -184,10 +217,13 @@ func (a *ProductionAdapter) CreateTask(ctx context.Context, task Task) (Task, er
 		return Task{}, err
 	}
 	if err := a.tasks.AppendEvent(ctx, TaskEvent{
-		TaskID: task.ID, Type: EventTaskCreated, To: TaskDraft,
+		TaskID: task.ID, Type: EventTaskCreated, To: task.Status,
 		Message: "task created from governed routing request", OccurredAt: time.Now().UTC(),
 	}); err != nil {
 		return Task{}, err
+	}
+	if task.Status == TaskReady {
+		a.triggerDispatch(task.ID)
 	}
 	return task, nil
 }
@@ -458,6 +494,9 @@ func (a *ProductionAdapter) MergeTask(ctx context.Context, id TaskID, note strin
 			"evidence_count", len(evidenceList),
 			"duration_ms", time.Since(startTime).Milliseconds(),
 		)
+		for _, ut := range unblockedTasks {
+			a.triggerDispatch(ut.ID)
+		}
 		return successTask, nil
 	}
 
@@ -511,6 +550,9 @@ func (a *ProductionAdapter) MergeTask(ctx context.Context, id TaskID, note strin
 		"evidence_count", len(evidenceList),
 		"duration_ms", time.Since(startTime).Milliseconds(),
 	)
+	for _, ut := range unblockedTasks {
+		a.triggerDispatch(ut.ID)
+	}
 	return successTask, nil
 }
 
