@@ -19,3 +19,12 @@ func TestBridgeReturnsApplicationSnapshot(t *testing.T) {
 		t.Fatalf("GetRuntimeSnapshot = %#v, want ready/disabled", got)
 	}
 }
+
+func TestPickDirectoryFailsWithoutBoundRuntime(t *testing.T) {
+	bridge := NewBridge(application.NewService())
+
+	_, err := bridge.PickDirectory()
+	if err == nil {
+		t.Fatal("expected error without runtime context")
+	}
+}

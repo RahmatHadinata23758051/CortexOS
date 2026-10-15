@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/RahmatHadinata23758051/CortexOS/internal/cortex/workspace"
@@ -187,6 +189,10 @@ func (s *Service) RegisterWorkspaceProject(ctx context.Context, request Workspac
 	if s == nil || s.workspace == nil {
 		return WorkspaceProject{}, &WorkspaceBridgeError{Code: string(workspace.ErrStorageUnavailable), Message: "workspace service is unavailable"}
 	}
+	if strings.TrimSpace(request.VaultRoot) == "" && strings.TrimSpace(request.RepositoryRoot) != "" {
+		// ponytail: vault root defaults to .cortexos/vault below repository root. Upgrade path: allow custom knowledge storage tier configuration.
+		request.VaultRoot = filepath.Join(request.RepositoryRoot, ".cortexos", "vault")
+	}
 	if err := validateWorkspaceProjectRequest(request); err != nil {
 		return WorkspaceProject{}, &WorkspaceBridgeError{Code: string(workspace.ErrInvalidRequest), Message: err.Error()}
 	}
@@ -208,14 +214,16 @@ func validateWorkspaceSchema(version string) error {
 }
 
 func validateWorkspaceProjectRequest(request WorkspaceProjectRequest) error {
-	if request.ID == "" || request.Name == "" || request.RepositoryRoot == "" || request.VaultRoot == "" {
-		return fmt.Errorf("project id, name, repository root, and Vault root are required")
+	if strings.TrimSpace(request.ID) == "" || strings.TrimSpace(request.Name) == "" || strings.TrimSpace(request.RepositoryRoot) == "" {
+		return fmt.Errorf("project id, name, and repository root are required")
 	}
 	if _, err := workspace.CanonicalRoot(request.RepositoryRoot); err != nil {
 		return fmt.Errorf("repository root is invalid")
 	}
-	if _, err := workspace.CanonicalRoot(request.VaultRoot); err != nil {
-		return fmt.Errorf("Vault root is invalid")
+	if strings.TrimSpace(request.VaultRoot) != "" {
+		if _, err := workspace.CanonicalRoot(request.VaultRoot); err != nil {
+			return fmt.Errorf("Vault root is invalid")
+		}
 	}
 	return nil
 }

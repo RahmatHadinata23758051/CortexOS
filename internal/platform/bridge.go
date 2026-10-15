@@ -2,15 +2,18 @@ package platform
 
 import (
 	"context"
+	"errors"
 
 	"github.com/RahmatHadinata23758051/CortexOS/internal/cortex/application"
+	wailsruntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 // Bridge is the thin Wails-facing adapter for application services.
 type Bridge struct {
-	service *application.Service
-	ctx     context.Context
-	emitter *EventEmitter
+	service    *application.Service
+	ctx        context.Context
+	emitter    *EventEmitter
+	runtimeCtx context.Context
 }
 
 // NewBridge creates a binding adapter around an application service.
@@ -27,7 +30,7 @@ func (b *Bridge) WithContext(ctx context.Context) *Bridge {
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	return &Bridge{service: b.service, ctx: ctx, emitter: b.emitter}
+	return &Bridge{service: b.service, ctx: ctx, emitter: b.emitter, runtimeCtx: b.runtimeCtx}
 }
 
 func (b *Bridge) getContext() context.Context {
@@ -39,9 +42,19 @@ func (b *Bridge) getContext() context.Context {
 
 // SetRuntimeContext installs the Wails runtime context for event emission.
 func (b *Bridge) SetRuntimeContext(ctx context.Context) {
-	if b != nil && b.emitter != nil {
-		b.emitter.SetContext(ctx)
+	if b != nil {
+		b.runtimeCtx = ctx
+		if b.emitter != nil {
+			b.emitter.SetContext(ctx)
+		}
 	}
+}
+
+func (b *Bridge) runtimeContext() context.Context {
+	if b != nil && b.runtimeCtx != nil {
+		return b.runtimeCtx
+	}
+	return context.Background()
 }
 
 // RegisterEventHook installs a runtime event hook.
@@ -280,6 +293,25 @@ func (b *Bridge) RebuildWorkspaceRetrieval(request application.WorkspaceMutation
 
 func (b *Bridge) RegisterWorkspaceProject(request application.WorkspaceProjectRequest) (application.WorkspaceProject, error) {
 	return b.service.RegisterWorkspaceProject(b.getContext(), request)
+}
+
+// PickDirectory opens the native directory picker used by project registration.
+// It returns an empty string when the user cancels.
+func (b *Bridge) PickDirectory() (string, error) {
+	if b == nil {
+		return "", errors.New("bridge is unavailable")
+	}
+	ctx := b.runtimeContext()
+	if ctx == nil || ctx.Value("frontend") == nil {
+		return "", errors.New("native directory dialog unavailable: runtime context not bound")
+	}
+	selected, err := wailsruntime.OpenDirectoryDialog(ctx, wailsruntime.OpenDialogOptions{
+		Title: "Choose project folder",
+	})
+	if err != nil {
+		return "", err
+	}
+	return selected, nil
 }
 
 // ListFiles exposes bounded, project-scoped file listing for Repository, Support, and Vault.
