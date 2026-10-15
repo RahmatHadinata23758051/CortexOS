@@ -5,6 +5,7 @@ import { type StaffSummary, type StaffBrainState, type OfficeActivityEvent, type
 import { type CoordinationSnapshot, type StaffAssignmentStatus } from '../types/coordination'
 import { loadOfficeSnapshot, createOfficeEventSource, staffById, type OfficeState } from '../bridge/office'
 import { loadCoordinationSnapshot, onCoordinationChanged } from '../bridge/coordination'
+import { onOrchestraPlanLifecycle } from '../bridge/orchestra-events'
 import { CoordinationPanel } from './CoordinationPanel'
 import { OrchestrationGraph } from './OrchestrationGraph'
 import { OrchestraPromptHud } from './OrchestraPromptHud'
@@ -220,8 +221,13 @@ export function OfficeView({ className = '', projectId }: OfficeViewProps): Reac
       })
     }
     refresh()
-    const unsubscribe = onCoordinationChanged(refresh)
-    return () => { active = false; unsubscribe() }
+    const unsubscribeCoordination = onCoordinationChanged(refresh)
+    const unsubscribeOrchestra = onOrchestraPlanLifecycle(refresh)
+    return () => {
+      active = false
+      unsubscribeCoordination()
+      unsubscribeOrchestra()
+    }
   }, [projectId])
 
   if (officeState.status === 'loading') return <div className={`office-view ${className}`}><div className="office-loading">Loading virtual office…</div></div>
