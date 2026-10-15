@@ -33,7 +33,9 @@ export type OrchestraPlanProposal = {
   summary: string
   riskLevel: 'low' | 'medium' | 'high' | string
   requiresConfirmation: boolean
-  status: 'proposed' | 'confirmed' | 'rejected' | 'auto_dispatched' | string
+  status: 'proposed' | 'confirmed' | 'rejected' | 'auto_dispatched' | 'answered' | string
+  intent?: 'inquiry' | 'action' | string
+  reply?: string
   tasks: OrchestraPlanTask[]
   createdAt: string
   confirmedAt?: string
