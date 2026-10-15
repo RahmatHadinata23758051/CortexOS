@@ -259,7 +259,30 @@ func TestPiCLIAdapterFindExecutable(t *testing.T) {
 	if err != nil {
 		t.Skipf("pi is not installed on this system: %v", err)
 	}
-	if !filepath.IsAbs(path) && !strings.Contains(path, "pi") {
+	if !filepath.IsAbs(path) && !strings.Contains(path, "pi") && !strings.Contains(path, "node") {
 		t.Fatalf("unexpected pi path: %s", path)
+	}
+}
+
+func TestPiCLIAdapterCompleteBuildsToollessCommand(t *testing.T) {
+	tmp := t.TempDir()
+	stream := `{"type":"message_end","message":{"role":"assistant","content":[{"type":"text","text":"{\"intent\":\"inquiry\"}"}]}}`
+	runner := &fakePiCLIRunner{runFunc: func(ctx context.Context, cmd string, args []string, env []string, workDir string) (SandboxResult, error) {
+		return SandboxResult{Stdout: []byte(stream), ExitCode: 0}, nil
+	}}
+	adapter, err := NewPiCLIAdapter(PiCLIAdapterConfig{ExecutablePath: "node", ExecutableArgs: []string{"launcher.js"}, WorktreeRoot: tmp, Runner: runner})
+	if err != nil {
+		t.Fatalf("NewPiCLIAdapter failed: %v", err)
+	}
+	out, err := adapter.Complete(context.Background(), "system prompt", "hello; world", time.Second)
+	if err != nil || !strings.Contains(out, "intent") {
+		t.Fatalf("Complete failed: output=%q err=%v", out, err)
+	}
+	call := runner.lastCall()
+	joined := strings.Join(call, "\x00")
+	for _, want := range []string{"node", "launcher.js", "--no-tools", "--no-context-files", "--system-prompt", "system prompt", "hello; world"} {
+		if !strings.Contains(joined, want) {
+			t.Errorf("command missing %q: %q", want, joined)
+		}
 	}
 }
