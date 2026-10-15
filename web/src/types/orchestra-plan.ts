@@ -17,9 +17,11 @@ export type OrchestraPlanProposalRequest = {
   correlationId: string
   projectId?: string
   userPrompt: string
-  title: string
+  /** Optional: only needed when the caller supplies explicit tasks. */
+  title?: string
   summary?: string
   requireConfirmation?: boolean
+  /** Empty list = Orchestra classifies the prompt and decides whether work is needed. */
   tasks: OrchestraPlanTask[]
   schemaVersion: typeof orchestraPlanSchemaVersion
 }
@@ -33,7 +35,9 @@ export type OrchestraPlanProposal = {
   summary: string
   riskLevel: 'low' | 'medium' | 'high' | string
   requiresConfirmation: boolean
-  status: 'proposed' | 'confirmed' | 'rejected' | 'auto_dispatched' | string
+  status: 'proposed' | 'confirmed' | 'rejected' | 'auto_dispatched' | 'answered' | string
+  intent?: 'inquiry' | 'action' | string
+  reply?: string
   tasks: OrchestraPlanTask[]
   createdAt: string
   confirmedAt?: string
@@ -81,6 +85,7 @@ export const OrchestraPlanEventNames = {
   Confirmed: 'cortexos:orchestra:plan:confirmed',
   Rejected: 'cortexos:orchestra:plan:rejected',
   AutoDispatched: 'cortexos:orchestra:plan:auto-dispatched',
+  Replied: 'cortexos:orchestra:replied',
   WorkerSpawned: 'cortexos:orchestra:worker:spawned',
   WorkerUpdated: 'cortexos:orchestra:worker:updated',
   WorkerUnspawned: 'cortexos:orchestra:worker:unspawned',
