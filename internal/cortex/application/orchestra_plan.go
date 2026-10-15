@@ -2,6 +2,7 @@ package application
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -16,9 +17,10 @@ import (
 const OrchestraPlanSchemaVersion = "cortexos.orchestra.plan.v1"
 
 var (
-	ErrOrchestraPlanInvalidRequest = errors.New("orchestra plan: invalid request")
-	ErrOrchestraPlanNotFound       = errors.New("orchestra plan: not found")
-	ErrOrchestraPlanAlreadyDecided = errors.New("orchestra plan: already confirmed or rejected")
+	ErrOrchestraPlanInvalidRequest   = errors.New("orchestra plan: invalid request")
+	ErrOrchestraPlanNotFound         = errors.New("orchestra plan: not found")
+	ErrOrchestraPlanAlreadyDecided   = errors.New("orchestra plan: already confirmed or rejected")
+	ErrOrchestraPlanModelUnavailable = errors.New("orchestra plan: coordinator model unavailable")
 )
 
 // OrchestraPlanPort defines the application contract for proposing, reviewing,
@@ -266,34 +268,32 @@ func (m *OrchestraPlanManager) ProposePlan(ctx context.Context, req OrchestraPla
 		return OrchestraPlanProposal{}, err
 	}
 
-	intent := classifyOrchestraPrompt(req.UserPrompt)
-	if len(req.Tasks) == 0 && intent == "inquiry" {
-		now := m.now().UTC()
-		reply := m.answerInquiry(ctx, req.UserPrompt)
-		proposal := OrchestraPlanProposal{
-			PlanID:            fmt.Sprintf("answer-%s", req.CorrelationID),
-			CorrelationID:     req.CorrelationID,
-			ProjectID:         req.ProjectID,
-			UserPrompt:        req.UserPrompt,
-			Title:             "Orchestra reply",
-			Summary:           reply,
-			Status:            "answered",
-			Intent:            "inquiry",
-			Reply:             reply,
-			Tasks:             []OrchestraPlanProposedTask{},
-			CreatedAt:         now,
-			DispatchedTaskIDs: []string{},
-			SchemaVersion:     OrchestraPlanSchemaVersion,
-		}
-		m.mu.Lock()
-		m.plans[proposal.PlanID] = proposal
-		m.mu.Unlock()
-		return proposal, nil
-	}
-
 	if len(req.Tasks) == 0 {
-		req.Title = deriveOrchestraTitle(req.UserPrompt)
-		req.Tasks = []OrchestraPlanProposedTask{deriveOrchestraTask(req.UserPrompt)}
+		decision, err := m.coordinate(ctx, req.UserPrompt)
+		if err != nil {
+			return OrchestraPlanProposal{}, err
+		}
+		if decision.Intent == "inquiry" {
+			reply := strings.TrimSpace(decision.Reply)
+			if reply == "" {
+				return OrchestraPlanProposal{}, fmt.Errorf("%w: inquiry reply is empty", ErrOrchestraPlanModelUnavailable)
+			}
+			return m.storeAnswer(req, reply)
+		}
+		req.Title = firstNonEmpty(decision.Title, deriveOrchestraTitle(req.UserPrompt))
+		task := decision.Task
+		task.Index = 0
+		task.Title = firstNonEmpty(task.Title, req.Title)
+		task.Role = firstNonEmpty(task.Role, "implementer")
+		task.Action = firstNonEmpty(task.Action, req.UserPrompt)
+		if len(task.AcceptanceCriteria) == 0 {
+			task.AcceptanceCriteria = []string{"Requested outcome is complete", "Evidence is ready for review"}
+		}
+		if task.EstimatedComplexity == "" {
+			task.EstimatedComplexity = "standard"
+		}
+		task.Dependencies = []int{}
+		req.Tasks = []OrchestraPlanProposedTask{task}
 	}
 
 	planID := fmt.Sprintf("plan-%s", req.CorrelationID)
@@ -448,30 +448,154 @@ func (m *OrchestraPlanManager) GetPlan(ctx context.Context, planID string) (Orch
 	return plan, nil
 }
 
-// SetBrain optionally connects the BrainPort for answering inquiries.
+// SetBrain connects the coordinator model used to answer inquiries and plan
+// actions. When unset, plan turns fail closed instead of inventing a reply.
 func (m *OrchestraPlanManager) SetBrain(brain BrainPort) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.brain = brain
 }
 
-func (m *OrchestraPlanManager) answerInquiry(ctx context.Context, prompt string) string {
+// orchestraCoordinatorRole instructs the model to act as Orchestra and return a
+// single machine-readable decision. Kept verbatim so the contract is stable.
+const OrchestraCoordinatorSystemPrompt = `You are Orchestra, the top-level project coordinator in CortexOS.
+Read the user's message and decide what to do.
+Return ONLY one raw JSON object, no markdown fence and no extra text, with this shape:
+{"intent":"inquiry"|"action","reply":"<answer when intent is inquiry, else empty>","title":"<short task title when intent is action, else empty>","role":"<implementer|reviewer|planner when action, else empty>","action":"<short work description when action, else empty>","acceptanceCriteria":["<criterion>"],"estimatedComplexity":"trivial"|"standard"|"complex"}
+Use "inquiry" for greetings, questions, and conversation. Use "action" only when the user asks for project work.`
+
+// orchestraDecision is the model's structured coordinator turn.
+type orchestraDecision struct {
+	Intent string                    `json:"intent"`
+	Reply  string                    `json:"reply"`
+	Title  string                    `json:"title"`
+	Task   OrchestraPlanProposedTask `json:"-"`
+}
+
+// coordinate asks the model (the CLI AI) to decide the intent and either answer
+// the user or describe the work. The model is the authority; there is no
+// keyword fallback. Fails closed when the model is unavailable.
+func (m *OrchestraPlanManager) coordinate(ctx context.Context, prompt string) (orchestraDecision, error) {
 	m.mu.RLock()
 	brain := m.brain
 	m.mu.RUnlock()
+	if brain == nil {
+		return orchestraDecision{}, fmt.Errorf("%w: no coordinator model is configured", ErrOrchestraPlanModelUnavailable)
+	}
+	res, err := brain.Dispatch(ctx, BrainDispatchRequest{
+		TaskID:        fmt.Sprintf("orchestra-coordinate-%d", m.now().UnixNano()),
+		UserPrompt:    fmt.Sprintf("%s\n\nUser message: %s", OrchestraCoordinatorSystemPrompt, prompt),
+		StaffID:       "staff-coordinator",
+		SchemaVersion: BrainBridgeContract,
+	})
+	if err != nil {
+		return orchestraDecision{}, fmt.Errorf("%w: %v", ErrOrchestraPlanModelUnavailable, err)
+	}
+	return parseOrchestraDecision(res.Output)
+}
 
-	if brain != nil {
-		req := BrainDispatchRequest{
-			TaskID:     fmt.Sprintf("orchestra-chat-%d", m.now().UnixNano()),
-			UserPrompt: fmt.Sprintf("You are Orchestra, the top-level project coordinator and director in CortexOS. Respond helpfully, concisely, and professionally to the user's inquiry: %s", prompt),
-			StaffID:    "staff-coordinator",
-		}
-		res, err := brain.Dispatch(ctx, req)
-		if err == nil && strings.TrimSpace(res.Output) != "" {
-			return strings.TrimSpace(res.Output)
+// parseOrchestraDecision extracts the coordinator JSON from a model reply,
+// tolerating prose or a fenced block around the object.
+func parseOrchestraDecision(output string) (orchestraDecision, error) {
+	raw := extractJSONObject(output)
+	if raw == "" {
+		return orchestraDecision{}, fmt.Errorf("%w: model returned no decision", ErrOrchestraPlanModelUnavailable)
+	}
+	var wire struct {
+		Intent              string   `json:"intent"`
+		Reply               string   `json:"reply"`
+		Title               string   `json:"title"`
+		Role                string   `json:"role"`
+		Action              string   `json:"action"`
+		AcceptanceCriteria  []string `json:"acceptanceCriteria"`
+		EstimatedComplexity string   `json:"estimatedComplexity"`
+	}
+	if err := json.Unmarshal([]byte(raw), &wire); err != nil {
+		return orchestraDecision{}, fmt.Errorf("%w: malformed decision: %v", ErrOrchestraPlanModelUnavailable, err)
+	}
+	decision := orchestraDecision{
+		Intent: strings.ToLower(strings.TrimSpace(wire.Intent)),
+		Reply:  strings.TrimSpace(wire.Reply),
+		Title:  strings.TrimSpace(wire.Title),
+		Task: OrchestraPlanProposedTask{
+			Role:                strings.TrimSpace(wire.Role),
+			Action:              strings.TrimSpace(wire.Action),
+			AcceptanceCriteria:  wire.AcceptanceCriteria,
+			EstimatedComplexity: strings.TrimSpace(wire.EstimatedComplexity),
+		},
+	}
+	decision.Task.Title = decision.Title
+	if decision.Intent == "" {
+		decision.Intent = "inquiry"
+	}
+	if decision.Intent != "action" {
+		decision.Intent = "inquiry"
+		if decision.Reply == "" {
+			decision.Reply = strings.TrimSpace(output)
 		}
 	}
-	return orchestraReply(prompt)
+	return decision, nil
+}
+
+// extractJSONObject returns the first balanced {...} block, handling fenced code.
+func extractJSONObject(text string) string {
+	start := strings.Index(text, "{")
+	if start < 0 {
+		return ""
+	}
+	depth := 0
+	inString := false
+	escaped := false
+	for i := start; i < len(text); i++ {
+		c := text[i]
+		if inString {
+			switch {
+			case escaped:
+				escaped = false
+			case c == '\\':
+				escaped = true
+			case c == '"':
+				inString = false
+			}
+			continue
+		}
+		switch c {
+		case '"':
+			inString = true
+		case '{':
+			depth++
+		case '}':
+			depth--
+			if depth == 0 {
+				return text[start : i+1]
+			}
+		}
+	}
+	return ""
+}
+
+// storeAnswer records an inquiry answer as a terminal proposal with no tasks.
+func (m *OrchestraPlanManager) storeAnswer(req OrchestraPlanProposalRequest, reply string) (OrchestraPlanProposal, error) {
+	now := m.now().UTC()
+	proposal := OrchestraPlanProposal{
+		PlanID:            fmt.Sprintf("answer-%s", req.CorrelationID),
+		CorrelationID:     req.CorrelationID,
+		ProjectID:         req.ProjectID,
+		UserPrompt:        req.UserPrompt,
+		Title:             "Orchestra reply",
+		Summary:           reply,
+		Status:            "answered",
+		Intent:            "inquiry",
+		Reply:             reply,
+		Tasks:             []OrchestraPlanProposedTask{},
+		CreatedAt:         now,
+		DispatchedTaskIDs: []string{},
+		SchemaVersion:     OrchestraPlanSchemaVersion,
+	}
+	m.mu.Lock()
+	m.plans[proposal.PlanID] = proposal
+	m.mu.Unlock()
+	return proposal, nil
 }
 
 func deriveOrchestraTitle(prompt string) string {
@@ -482,80 +606,13 @@ func deriveOrchestraTitle(prompt string) string {
 	return clean
 }
 
-// classifyOrchestraPrompt separates questions/greetings from real work requests.
-// ponytail: deterministic keyword classifier. Upgrade path: route to LLM coordinator agent for zero-shot intent routing.
-func classifyOrchestraPrompt(prompt string) string {
-	lower := strings.ToLower(strings.TrimSpace(prompt))
-	greetings := []string{"halo", "hi", "hai", "hello", "hey", "ping", "p", "siapa kamu"}
-	for _, g := range greetings {
-		if lower == g || strings.HasPrefix(lower, g+" ") || strings.HasPrefix(lower, g+",") || strings.HasPrefix(lower, g+"!") {
-			return "inquiry"
+func firstNonEmpty(values ...string) string {
+	for _, v := range values {
+		if strings.TrimSpace(v) != "" {
+			return strings.TrimSpace(v)
 		}
 	}
-	workVerbs := []string{
-		"buat", "bikin", "tambah", "ubah", "ganti", "hapus", "perbaiki", "benahi", "jalankan", "kerjakan",
-		"create", "build", "implement", "refactor", "add", "update", "delete", "remove",
-		"setup", "install", "deploy", "generate", "write", "fix", "patch", "migrate",
-	}
-	for _, kw := range workVerbs {
-		if strings.Contains(lower, kw) {
-			return "action"
-		}
-	}
-	inquiryWords := []string{
-		"apa ", "kenapa ", "mengapa ", "bagaimana ", "gimana ", "jelaskan", "fungsi ", "cek ", "inspect ",
-		"analisa", "analisis", "analyze", "explain", "summarize", "ringkas", "what ", "how ", "why ",
-	}
-	if strings.HasSuffix(lower, "?") || strings.HasPrefix(lower, "tolong jelaskan") {
-		return "inquiry"
-	}
-	for _, kw := range inquiryWords {
-		if strings.Contains(lower, kw) {
-			return "inquiry"
-		}
-	}
-	if len(lower) < 25 {
-		return "inquiry"
-	}
-	return "action"
-}
-
-func orchestraReply(prompt string) string {
-	lower := strings.ToLower(strings.TrimSpace(prompt))
-	if strings.HasPrefix(lower, "halo") || strings.HasPrefix(lower, "hi") || strings.HasPrefix(lower, "hai") || strings.HasPrefix(lower, "hello") {
-		return "Halo! Saya Orchestra, koordinator project ini. Tanyakan informasi project atau berikan instruksi perubahan jika ingin menugaskan worker."
-	}
-	if strings.Contains(lower, "siapa") || strings.Contains(lower, "who") {
-		return "Saya Orchestra, agen koordinator utama. Saya bertugas merancang plan, memilih worker, dan memverifikasi hasil."
-	}
-	return "Pertanyaan Anda diterima. Ini adalah komunikasi langsung dengan Orchestra dan tidak ada worker yang dipanggil. Beritahu saya bila Anda membutuhkan perubahan kode."
-}
-
-func deriveOrchestraTask(prompt string) OrchestraPlanProposedTask {
-	title := deriveOrchestraTitle(prompt)
-	lower := strings.ToLower(prompt)
-	role := "implementer"
-	action := "complete the requested project work"
-	if strings.Contains(lower, "test") || strings.Contains(lower, "uji") {
-		role = "reviewer"
-		action = "test and verify project functionality"
-	} else if strings.Contains(lower, "review") || strings.Contains(lower, "tinjau") || strings.Contains(lower, "inspect") {
-		role = "reviewer"
-		action = "review code and architecture"
-	} else if strings.Contains(lower, "spec") || strings.Contains(lower, "plan") || strings.Contains(lower, "arsitektur") {
-		role = "planner"
-		action = "plan project architecture and requirements"
-	}
-	return OrchestraPlanProposedTask{
-		Index:               0,
-		Title:               title,
-		Role:                role,
-		CallSign:            fmt.Sprintf("%s-1", role),
-		Action:              action,
-		AcceptanceCriteria:  []string{"Requested outcome is complete", "Evidence is ready for review"},
-		EstimatedComplexity: "standard",
-		Dependencies:        []int{},
-	}
+	return ""
 }
 
 // dispatchTasks translates proposed plan tasks into Orchestra-owned tasks and saves them.
