@@ -1430,8 +1430,12 @@ a {
 .office-view { display: flex; flex-direction: column; gap: 16px; border: 1px solid var(--border); background: var(--surface); color: var(--text); padding: 20px; border-radius: var(--radius-md); }
 .readonly-banner { display: flex; align-items: center; gap: 12px; font: 500 .7rem var(--font-mono); color: var(--text-muted); background: var(--surface-2); padding: 8px 12px; border-left: 3px solid var(--accent); }
 .readonly-banner .badge { background: var(--accent); color: var(--text-inverse); font-weight: 700; }
-.office-grid, .office-graph-layout { display: grid; grid-template-columns: minmax(0, 1fr) 280px; gap: 18px; }
+.office-grid { display: grid; grid-template-columns: minmax(0, 1fr) 280px; gap: 18px; }
+.office-graph-layout { display: grid; grid-template-columns: minmax(250px, 300px) minmax(0, 1fr); gap: 18px; align-items: start; }
 .office-main, .office-graph-main { min-width: 0; display: flex; flex-direction: column; }
+.office-prompt-column { min-width: 0; position: sticky; top: 16px; }
+.office-graph-main .orchestration-graph { min-height: 680px; }
+.office-prompt-column .orchestra-prompt-hud { margin-bottom: 0; min-height: 580px; }
 .office-canvas { width: 100%; min-height: 510px; background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius-md); overflow: hidden; display: flex; justify-content: center; align-items: center; }
 .office-graph-main .orchestration-graph { min-height: 680px; }
 .office-canvas canvas { display: block; max-width: 100%; height: auto; }
@@ -1521,21 +1525,25 @@ a {
 
 /* Orchestra plan HUD and ephemeral worker cards */
 .orchestra-prompt-hud, .worker-cards-panel { border: 1px solid var(--border); background: var(--surface); border-radius: var(--radius-md); }
-.orchestra-prompt-hud { display: flex; flex-direction: column; gap: 14px; padding: 16px; margin-bottom: 16px; }
+.orchestra-prompt-hud { display: flex; flex-direction: column; gap: 18px; padding: 20px; margin-bottom: 0; min-height: 580px; border-radius: 24px; background: linear-gradient(155deg, color-mix(in srgb, var(--surface) 92%, var(--accent) 8%), var(--surface)); }
 .orchestra-prompt-header, .worker-cards-header, .plan-proposal-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; }
-.orchestra-prompt-header h2 { margin: 4px 0 2px; font-size: .98rem; }
-.orchestra-prompt-header p { margin: 0; color: var(--text-muted); font-size: .7rem; }
+.orchestra-prompt-header h2 { margin: 6px 0 6px; font-size: 1.05rem; line-height: 1.25; }
+.orchestra-prompt-header p { margin: 0; color: var(--text-muted); font-size: .7rem; line-height: 1.5; }
 .eyebrow { display: block; color: var(--accent-text); font: 700 .58rem var(--font-mono); letter-spacing: .12em; text-transform: uppercase; }
 .prompt-bridge-badge, .plan-risk, .worker-state-badge { border: 1px solid var(--status-info-border); border-radius: 999px; color: var(--accent-text); background: var(--accent-bg); padding: 3px 7px; font: 700 .58rem var(--font-mono); letter-spacing: .06em; text-transform: uppercase; white-space: nowrap; }
-.orchestra-prompt-form { display: flex; flex-direction: column; gap: 10px; }
-.prompt-form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
-.prompt-field { display: flex; flex-direction: column; gap: 5px; color: var(--text-muted); font: 600 .62rem var(--font-mono); text-transform: uppercase; letter-spacing: .08em; }
-.prompt-field-wide { width: 100%; }
-.prompt-field small { font-weight: 400; letter-spacing: 0; text-transform: none; }
-.prompt-field input, .prompt-field textarea, .prompt-field select { width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface-2); color: var(--text); font: .74rem var(--font-sans); letter-spacing: normal; text-transform: none; resize: vertical; }
+.orchestra-prompt-form { display: flex; flex: 1; flex-direction: column; gap: 14px; }
+.prompt-field { display: flex; flex-direction: column; gap: 7px; color: var(--text-muted); font: 600 .62rem var(--font-mono); text-transform: uppercase; letter-spacing: .08em; }
+.prompt-field input, .prompt-field textarea, .prompt-field select { width: 100%; padding: 11px 12px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface-2); color: var(--text); font: .76rem/1.5 var(--font-sans); letter-spacing: normal; text-transform: none; resize: vertical; box-sizing: border-box; }
+.prompt-command-field textarea { min-height: 148px; flex: 1; resize: none; font-size: .86rem; }
 .prompt-field input:focus, .prompt-field textarea:focus, .prompt-field select:focus { border-color: var(--accent); outline: 2px solid var(--accent-bg); }
 .prompt-advanced-toggle { align-self: flex-start; display: inline-flex; align-items: center; gap: 5px; padding: 3px 0; color: var(--text-muted); font: 600 .62rem var(--font-mono); }
 .prompt-advanced-toggle:hover { color: var(--text); }
+.prompt-details { display: flex; flex-direction: column; gap: 10px; padding: 12px; border: 1px solid var(--border); border-radius: 14px; background: color-mix(in srgb, var(--surface-2) 72%, transparent); }
+.prompt-form-footer { margin-top: auto; flex-wrap: wrap; }
+.office-prompt-column .prompt-form-footer { align-items: stretch; flex-direction: column; }
+.office-prompt-column .prompt-contract-note { margin: 0; }
+.office-prompt-column .prompt-submit { justify-content: center; width: 100%; min-height: 42px; }
+.office-prompt-column .orchestra-plan-proposal { margin-top: auto; }
 .prompt-form-footer, .plan-decision-actions { display: flex; align-items: center; justify-content: flex-end; gap: 8px; }
 .prompt-contract-note { margin-right: auto; color: var(--text-faint); font: .62rem var(--font-mono); }
 .prompt-submit, .plan-confirm-button, .plan-reject-button { min-height: 32px; display: inline-flex; align-items: center; gap: 6px; border-radius: var(--radius-sm); padding: 7px 11px; font: 700 .65rem var(--font-mono); }

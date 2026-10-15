@@ -122,15 +122,6 @@ function TerminalOverlay({ state, onClose, onAskBrain }: { state: TerminalOverla
   )
 }
 
-function ReadOnlyBanner() {
-  return (
-    <div className="readonly-banner" aria-live="polite">
-      <span className="badge">READ-ONLY</span>
-      <span>Phaser consumes typed bridge/event state — no domain mutation</span>
-    </div>
-  )
-}
-
 function OfficeCanvas({ staff, onSelect, brainState, coordination }: { staff: readonly StaffSummary[]; onSelect: (id: string) => void; brainState?: StaffBrainState; coordination?: readonly StaffAssignmentStatus[] }) {
   const canvasRef = useRef<HTMLDivElement>(null)
   const gameRef = useRef<OfficeGameHandle | null>(null)
@@ -240,7 +231,6 @@ export function OfficeView({ className = '', projectId }: OfficeViewProps): Reac
 
   return (
     <div className={`office-view ${className}`}>
-      <ReadOnlyBanner />
       <div className="office-mode-switcher" role="tablist" aria-label="Office presentation mode">
         <button type="button" className={viewMode === 'graph' ? 'active' : ''} onClick={() => setViewMode('graph')} role="tab" aria-selected={viewMode === 'graph'}>
           <FolderKanban size={14} aria-hidden="true" />
@@ -253,8 +243,21 @@ export function OfficeView({ className = '', projectId }: OfficeViewProps): Reac
       </div>
       {viewMode === 'graph' ? (
         <div className="office-graph-layout">
+          <aside className="office-prompt-column">
+            {projectId && (
+              <>
+                <OrchestraPromptHud
+                  projectId={projectId}
+                  bridge={wailsRuntimeBridge}
+                />
+                <WorkerCardsPanel
+                  projectId={projectId}
+                  bridge={wailsRuntimeBridge}
+                />
+              </>
+            )}
+          </aside>
           <main className="office-graph-main">
-            {projectId && <OrchestraPromptHud projectId={projectId} bridge={wailsRuntimeBridge} />}
             {coordination.status === 'success' ? (
               <OrchestrationGraph
                 snapshot={coordination.snapshot}
@@ -267,17 +270,10 @@ export function OfficeView({ className = '', projectId }: OfficeViewProps): Reac
               <div className="office-loading">Loading orchestration graph…</div>
             )}
           </main>
-          <div className="office-side">
-            {projectId && <WorkerCardsPanel projectId={projectId} bridge={wailsRuntimeBridge} />}
-            <StaffDirectory staff={staff} selectedId={selectedStaffId} onSelect={handleStaffSelect} />
-            <ZoneLegend />
-            <ActivityFeed events={activityEvents} />
-          </div>
         </div>
       ) : (
         <div className="office-grid">
           <main className="office-main">
-            {projectId && <OrchestraPromptHud projectId={projectId} bridge={wailsRuntimeBridge} />}
             <OfficeCanvas
               staff={staff}
               onSelect={handleStaffSelect}
@@ -286,7 +282,6 @@ export function OfficeView({ className = '', projectId }: OfficeViewProps): Reac
             />
           </main>
           <div className="office-side">
-            {projectId && <WorkerCardsPanel projectId={projectId} bridge={wailsRuntimeBridge} />}
             {coordination.status === 'success' && <CoordinationPanel snapshot={coordination.snapshot} />}
             <StaffDirectory staff={staff} selectedId={selectedStaffId} onSelect={handleStaffSelect} />
             <ZoneLegend />

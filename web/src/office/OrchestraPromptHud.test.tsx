@@ -16,19 +16,14 @@ function mockPlanBridge(overrides: Partial<OrchestraPlanBridge> = {}): Orchestra
 }
 
 describe('OrchestraPromptHud', () => {
-  it('renders prompt form with required fields and bridge badge', () => {
+  it('renders command prompt with live indicator and single-command focus', () => {
     const markup = renderToStaticMarkup(
       <OrchestraPromptHud projectId="proj-1" bridge={mockPlanBridge()} />,
     )
-    expect(markup).toContain('Prompt a governed plan')
-    expect(markup).toContain('LIVE BRIDGE')
-    expect(markup).toContain('Intent')
-    expect(markup).toContain('Plan title')
-    expect(markup).toContain('Task title')
-    expect(markup).toContain('Role')
-    expect(markup).toContain('Action')
-    expect(markup).toContain('Acceptance criteria')
-    expect(markup).toContain('Plan contract v1 · 1 task')
-    expect(markup).toContain('Propose plan')
+    expect(markup).toContain('What should we orchestrate?')
+    expect(markup).toContain('LIVE')
+    expect(markup).toContain('Command')
+    expect(markup).toContain('Tune plan details')
+    expect(markup).toContain('Send to Orchestra')
   })
 })
