@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/RahmatHadinata23758051/CortexOS/internal/cortex/orchestra"
+	"github.com/RahmatHadinata23758051/CortexOS/internal/cortex/staff"
 )
 
 var _ orchestra.TaskStore = (*Store)(nil)
@@ -45,8 +46,8 @@ func (s *Store) SaveTask(ctx context.Context, task orchestra.Task) error {
 
 	query := `INSERT INTO orchestra_tasks (
 		id, project_id, worktree_id, title, acceptance_criteria, dependencies,
-		status, attempt_count, max_attempts, created_at, updated_at, schema_version
-	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		status, attempt_count, max_attempts, created_at, updated_at, schema_version, assigned_staff_id
+	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	ON CONFLICT(id) DO UPDATE SET
 		project_id = excluded.project_id,
 		worktree_id = excluded.worktree_id,
@@ -57,7 +58,8 @@ func (s *Store) SaveTask(ctx context.Context, task orchestra.Task) error {
 		attempt_count = excluded.attempt_count,
 		max_attempts = excluded.max_attempts,
 		updated_at = excluded.updated_at,
-		schema_version = excluded.schema_version;`
+		schema_version = excluded.schema_version,
+		assigned_staff_id = excluded.assigned_staff_id;`
 
 	_, err = s.db.ExecContext(ctx, query,
 		string(task.ID),
@@ -72,6 +74,7 @@ func (s *Store) SaveTask(ctx context.Context, task orchestra.Task) error {
 		task.CreatedAt.Format(time.RFC3339Nano),
 		task.UpdatedAt.Format(time.RFC3339Nano),
 		task.SchemaVersion,
+		string(task.AssignedStaffID),
 	)
 	if err != nil {
 		return fmt.Errorf("save task %q: %w", task.ID, err)
@@ -90,12 +93,12 @@ func (s *Store) GetTask(ctx context.Context, id orchestra.TaskID) (orchestra.Tas
 		return orchestra.Task{}, orchestra.ErrNotFound
 	}
 	query := `SELECT id, project_id, worktree_id, title, acceptance_criteria, dependencies,
-		status, attempt_count, max_attempts, created_at, updated_at, schema_version
+		status, attempt_count, max_attempts, created_at, updated_at, schema_version, assigned_staff_id
 		FROM orchestra_tasks WHERE id = ?`
 
 	row := s.db.QueryRowContext(ctx, query, string(id))
 	var task orchestra.Task
-	var rawID, criteriaStr, depsStr, statusStr, createdAtStr, updatedAtStr string
+	var rawID, criteriaStr, depsStr, statusStr, createdAtStr, updatedAtStr, assignedStaffID string
 
 	err := row.Scan(
 		&rawID,
@@ -110,6 +113,7 @@ func (s *Store) GetTask(ctx context.Context, id orchestra.TaskID) (orchestra.Tas
 		&createdAtStr,
 		&updatedAtStr,
 		&task.SchemaVersion,
+		&assignedStaffID,
 	)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -118,6 +122,7 @@ func (s *Store) GetTask(ctx context.Context, id orchestra.TaskID) (orchestra.Tas
 		return orchestra.Task{}, fmt.Errorf("get task %q: %w", id, err)
 	}
 	task.ID = orchestra.TaskID(rawID)
+	task.AssignedStaffID = staff.StaffID(assignedStaffID)
 	task.Status = orchestra.TaskStatus(statusStr)
 	task.CreatedAt, _ = time.Parse(time.RFC3339Nano, createdAtStr)
 	task.UpdatedAt, _ = time.Parse(time.RFC3339Nano, updatedAtStr)
@@ -138,7 +143,7 @@ func (s *Store) ListTasks(ctx context.Context) ([]orchestra.Task, error) {
 		return nil, err
 	}
 	query := `SELECT id, project_id, worktree_id, title, acceptance_criteria, dependencies,
-		status, attempt_count, max_attempts, created_at, updated_at, schema_version
+		status, attempt_count, max_attempts, created_at, updated_at, schema_version, assigned_staff_id
 		FROM orchestra_tasks ORDER BY id ASC`
 
 	rows, err := s.db.QueryContext(ctx, query)
@@ -150,7 +155,7 @@ func (s *Store) ListTasks(ctx context.Context) ([]orchestra.Task, error) {
 	var tasks []orchestra.Task
 	for rows.Next() {
 		var task orchestra.Task
-		var rawID, criteriaStr, depsStr, statusStr, createdAtStr, updatedAtStr string
+		var rawID, criteriaStr, depsStr, statusStr, createdAtStr, updatedAtStr, assignedStaffID string
 		err := rows.Scan(
 			&rawID,
 			&task.ProjectID,
@@ -164,11 +169,13 @@ func (s *Store) ListTasks(ctx context.Context) ([]orchestra.Task, error) {
 			&createdAtStr,
 			&updatedAtStr,
 			&task.SchemaVersion,
+			&assignedStaffID,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("scan task: %w", err)
 		}
 		task.ID = orchestra.TaskID(rawID)
+		task.AssignedStaffID = staff.StaffID(assignedStaffID)
 		task.Status = orchestra.TaskStatus(statusStr)
 		task.CreatedAt, _ = time.Parse(time.RFC3339Nano, createdAtStr)
 		task.UpdatedAt, _ = time.Parse(time.RFC3339Nano, updatedAtStr)
@@ -423,7 +430,8 @@ func (s *Store) CommitMerge(ctx context.Context, commit orchestra.MergeCommit) e
 	depsJSON, _ := json.Marshal(commit.MergedTask.Dependencies)
 	result, err := tx.ExecContext(ctx, `UPDATE orchestra_tasks SET
 		status = ?, attempt_count = ?, max_attempts = ?, updated_at = ?,
-		title = ?, acceptance_criteria = ?, dependencies = ?, schema_version = ?
+		title = ?, acceptance_criteria = ?, dependencies = ?, schema_version = ?,
+		assigned_staff_id = ?
 		WHERE id = ? AND status = ?`,
 		string(commit.MergedTask.Status),
 		commit.MergedTask.AttemptCount,
@@ -433,6 +441,7 @@ func (s *Store) CommitMerge(ctx context.Context, commit orchestra.MergeCommit) e
 		string(criteriaJSON),
 		string(depsJSON),
 		commit.MergedTask.SchemaVersion,
+		string(commit.MergedTask.AssignedStaffID),
 		string(commit.MergedTask.ID),
 		string(orchestra.TaskAwaitingInspection),
 	)

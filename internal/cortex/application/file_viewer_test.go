@@ -118,7 +118,7 @@ func TestFilesAdapter_RepositoryListAndRead(t *testing.T) {
 }
 
 func TestFilesAdapter_SupportListAndRead(t *testing.T) {
-	ws, _, _ := newMockWorkspaceService(t)
+	ws, _, tempDir := newMockWorkspaceService(t)
 	adapter := NewFilesAdapter(ws)
 	ctx := context.Background()
 
@@ -147,6 +147,20 @@ func TestFilesAdapter_SupportListAndRead(t *testing.T) {
 	}
 	if readRes.Content != "User guide reference\n" {
 		t.Errorf("unexpected content: %q", readRes.Content)
+	}
+
+	// Remove support dir: listing must return an empty result, not an error
+	_ = os.RemoveAll(filepath.Join(tempDir, "repo", "support"))
+	emptyRes, err := adapter.ListFiles(ctx, FilesListRequest{
+		SchemaVersion: FilesBridgeSchemaVersion,
+		ProjectID:     "proj-1",
+		Area:          FilesAreaSupport,
+	})
+	if err != nil {
+		t.Fatalf("listing absent support dir should succeed, got error: %v", err)
+	}
+	if len(emptyRes.Entries) != 0 {
+		t.Fatalf("expected empty entries for absent support dir, got %d", len(emptyRes.Entries))
 	}
 }
 

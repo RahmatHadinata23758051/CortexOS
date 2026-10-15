@@ -67,6 +67,10 @@ var migrations = []string{
 		FOREIGN KEY(execution_id) REFERENCES orchestra_executions(id)
 	);`,
 	`CREATE INDEX orchestra_active_tasks_heartbeat_idx ON orchestra_active_tasks(heartbeat_at);`,
+	// orchestra-9: persist the logical assignment identity. Without this column the
+	// assignment fact survived only in memory, so worker-card derivation and the
+	// execution graph lost every worker call sign after a reload.
+	`ALTER TABLE orchestra_tasks ADD COLUMN assigned_staff_id TEXT NOT NULL DEFAULT '';`,
 }
 
 func SchemaVersion() string { return schemaVersion }

@@ -166,6 +166,14 @@ func (a *FilesAdapter) ListFiles(ctx context.Context, request FilesListRequest) 
 	if err != nil {
 		return FilesListResult{}, err
 	}
+	if request.Area == FilesAreaSupport && request.Path == "" {
+		if _, statErr := os.Stat(root); errors.Is(statErr, os.ErrNotExist) {
+			// Support is optional user-provided material; an absent folder is an honest empty state.
+			return FilesListResult{ProjectID: request.ProjectID, WorktreeID: worktreeID, Area: request.Area, RootLabel: string(request.Area), Entries: []FilesEntry{}, SchemaVersion: FilesBridgeSchemaVersion}, nil
+		} else if statErr != nil {
+			return FilesListResult{}, fmt.Errorf("%w: support root is unavailable", ErrFilesUnavailable)
+		}
+	}
 	return listDiskFiles(root, request.Path, request.Area, request.ProjectID, worktreeID)
 }
 

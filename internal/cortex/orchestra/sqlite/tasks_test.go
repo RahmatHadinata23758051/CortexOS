@@ -23,6 +23,46 @@ func testTask() orchestra.Task {
 	}
 }
 
+func TestStorePersistsAssignedStaffIDAcrossReopen(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "state", "orchestra.db")
+	ctx := context.Background()
+	store, err := Open(ctx, path)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	task := testTask()
+	task.AssignedStaffID = "implementer-1"
+	if err := store.SaveTask(ctx, task); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	reopened, err := Open(ctx, path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reopened.Close()
+
+	loaded, err := reopened.GetTask(ctx, task.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if loaded.AssignedStaffID != "implementer-1" {
+		t.Fatalf("assigned staff id after reopen = %q, want %q", loaded.AssignedStaffID, "implementer-1")
+	}
+
+	listed, err := reopened.ListTasks(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(listed) != 1 || listed[0].AssignedStaffID != "implementer-1" {
+		t.Fatalf("listed tasks = %#v", listed)
+	}
+}
+
 func TestStorePersistsTasksExecutionsAndEventsAcrossReopen(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "state", "orchestra.db")
 	ctx := context.Background()
