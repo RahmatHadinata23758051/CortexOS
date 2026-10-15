@@ -26,6 +26,14 @@ export * from './harness'
 export * from './brain'
 export * from './phase13'
 export * from './orchestra-plan'
+
+export const ToolApprovalEventNames = {
+  Proposed: 'cortexos:tool:proposed',
+  Approved: 'cortexos:tool:approved',
+  Denied: 'cortexos:tool:denied',
+  Executed: 'cortexos:tool:executed',
+  Failed: 'cortexos:tool:failed',
+} as const
 export * from './files'
 export * from './worker-lifecycle'
 import type { WorkspaceBridge } from './workspace'
