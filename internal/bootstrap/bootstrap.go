@@ -120,18 +120,103 @@ func OpenOrchestra(ctx context.Context, canonicalRoot string, workspaceService *
 		return secondErr
 	}
 
+	dispatcher, dispErr := wireProductionDispatcher(canonicalRoot, orchStore, workspaceService)
+	if dispErr != nil {
+		logging.DefaultLogger().WarnContext(ctx, "production dispatcher setup skipped", "error", dispErr.Error())
+	}
+
 	adapter, err := orchestra.NewProductionAdapter(orchestra.ProductionAdapterConfig{
 		TaskStore:         orchStore,
 		HarnessStore:      harnessStore,
 		WorktreeInspector: &workspaceWorktreeInspector{workspace: workspaceService},
 		Inspector:         orchestra.MergeAuthority{Capability: orchestra.MergeCapability},
 		Logger:            logging.DefaultLogger(),
+		Dispatcher:        dispatcher,
 	})
 	if err != nil {
 		_ = closeAll()
 		return nil, nil, err
 	}
 	return adapter, closeAll, nil
+}
+
+func wireProductionDispatcher(
+	canonicalRoot string,
+	orchStore orchestra.TaskStore,
+	workspaceService *workspace.Service,
+) (*orchestra.Dispatcher, error) {
+	worktreeRoot := resolveWorktreeRoot(canonicalRoot, workspaceService)
+	if err := os.MkdirAll(worktreeRoot, 0o700); err != nil {
+		return nil, fmt.Errorf("prepare worktree root %q: %w", worktreeRoot, err)
+	}
+
+	policy, err := harness.NewPolicy([]harness.Rule{
+		{ID: "rule-allow-coding", Action: "*", Resource: "*", Effect: harness.EffectAllow},
+	})
+	if err != nil {
+		return nil, err
+	}
+	staticPolicy, err := harness.NewStaticPolicy(policy)
+	if err != nil {
+		return nil, err
+	}
+
+	broker := harness.NewBroker(staticPolicy)
+	sandbox, err := harness.NewSandbox(harness.SandboxConfig{WorktreeRoot: worktreeRoot})
+	if err != nil {
+		return nil, err
+	}
+	broker.SetSandbox(sandbox)
+
+	if err := broker.Register(harness.ToolDefinition{
+		Name:         "coding_agent",
+		Kind:         harness.ToolKindPi,
+		Description:  "Pi coding engine",
+		Capabilities: []harness.ToolCapability{harness.CapabilityCoding, harness.CapabilityAnalysis},
+		Timeout:      120 * time.Second,
+		Version:      "pi.v1",
+	}); err != nil {
+		return nil, err
+	}
+
+	piAdapter, err := harness.NewPiCLIAdapter(harness.PiCLIAdapterConfig{
+		WorktreeRoot: worktreeRoot,
+		Sandbox:      sandbox,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("initialize Pi adapter: %w", err)
+	}
+	if err := broker.RegisterEngine(piAdapter); err != nil {
+		return nil, fmt.Errorf("register Pi adapter: %w", err)
+	}
+
+	bridge := orchestra.NewHarnessBridge(broker, orchStore, worktreeRoot)
+	dispatcher := orchestra.NewDispatcher(orchStore, bridge, "pi-cli-worker")
+	return dispatcher, nil
+}
+
+func resolveWorktreeRoot(canonicalRoot string, workspaceService *workspace.Service) string {
+	if custom := os.Getenv("CORTEXOS_WORKTREE_ROOT"); custom != "" {
+		if abs, err := filepath.Abs(custom); err == nil {
+			return abs
+		}
+	}
+	if workspaceService != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		if snap, err := workspaceService.Snapshot(ctx); err == nil {
+			for _, p := range snap.Projects {
+				if p.RepositoryRoot != "" {
+					if info, err := os.Stat(p.RepositoryRoot); err == nil && info.IsDir() {
+						return p.RepositoryRoot
+					}
+				}
+			}
+		}
+	}
+	fallback := filepath.Join(canonicalRoot, "worktrees")
+	_ = os.MkdirAll(fallback, 0o700)
+	return fallback
 }
 
 // workspaceWorktreeInspector adapts workspace.Service worktree inspection to the
